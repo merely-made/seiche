@@ -63,7 +63,7 @@ impl Force for HubGravity {
                     .iter()
                     .map(|(key, _, _)| ((degree.get(key).copied().unwrap_or(0) + 1) as f32).ln())
                     .collect()
-            }
+            },
         };
         let mut forces = vec![Vector::ZERO; nodes.len()];
         for i in 0..nodes.len() {

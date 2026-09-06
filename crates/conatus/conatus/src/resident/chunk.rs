@@ -825,16 +825,16 @@ impl fmt::Display for ResidentChunkError {
             Self::EmptyPlaneId => formatter.write_str("resident plane id cannot be empty"),
             Self::EmptyShape { shape } => {
                 write!(formatter, "resident plane shape {shape:?} is empty")
-            }
+            },
             Self::ShapeOverflow { shape } => {
                 write!(
                     formatter,
                     "resident plane shape {shape:?} overflows its allocation"
                 )
-            }
+            },
             Self::DuplicatePlane(plane) => {
                 write!(formatter, "resident plane {plane} already exists")
-            }
+            },
             Self::UnknownPlane(plane) => write!(formatter, "resident plane {plane} does not exist"),
             Self::ElementCount {
                 plane,
@@ -872,7 +872,7 @@ impl fmt::Display for ResidentChunkError {
             ),
             Self::EmptyPatchBatch { plane } => {
                 write!(formatter, "resident patch batch for plane {plane} is empty")
-            }
+            },
             Self::OverlappingPatches {
                 plane,
                 first_index,
@@ -894,7 +894,7 @@ impl fmt::Display for ResidentChunkError {
                     formatter,
                     "resident patch range for plane {plane} overflowed"
                 )
-            }
+            },
             Self::PatchRange {
                 plane,
                 byte_offset,

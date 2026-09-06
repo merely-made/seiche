@@ -38,7 +38,7 @@ pub fn eval_scalar(field: &ScalarField, registry: &FieldRegistry, x: f32, y: f32
                 return 0.0;
             }
             (-(dx * dx + dy * dy) / (2.0 * s2)).exp()
-        }
+        },
         ScalarField::Disk {
             center,
             radius,
@@ -53,24 +53,24 @@ pub fn eval_scalar(field: &ScalarField, registry: &FieldRegistry, x: f32, y: f32
             }
             let u = (d / *radius).clamp(0.0, 1.0);
             apply_falloff(*falloff, u)
-        }
+        },
         ScalarField::Linear { normal, offset } => {
             let (nx, ny) = eval_vector(normal, registry, x, y, t);
             nx * x + ny * y + offset
-        }
+        },
         ScalarField::Add(a, b) => {
             eval_scalar(a, registry, x, y, t) + eval_scalar(b, registry, x, y, t)
-        }
+        },
         ScalarField::Mul(a, b) => {
             eval_scalar(a, registry, x, y, t) * eval_scalar(b, registry, x, y, t)
-        }
+        },
         ScalarField::Scale(a, k) => eval_scalar(a, registry, x, y, t) * k,
         ScalarField::Negate(a) => -eval_scalar(a, registry, x, y, t),
         ScalarField::Dot(a, b) => {
             let (ax, ay) = eval_vector(a, registry, x, y, t);
             let (bx, by) = eval_vector(b, registry, x, y, t);
             ax * bx + ay * by
-        }
+        },
         ScalarField::Sample(id) => match registry.get(*id) {
             Some(FieldDef::Scalar(f)) => eval_scalar(f, registry, x, y, t),
             _ => 0.0,
@@ -93,21 +93,21 @@ pub fn eval_vector(
         VectorField::Perp(v) => {
             let (vx, vy) = eval_vector(v, registry, x, y, t);
             (-vy, vx)
-        }
+        },
         VectorField::Add(a, b) => {
             let (ax, ay) = eval_vector(a, registry, x, y, t);
             let (bx, by) = eval_vector(b, registry, x, y, t);
             (ax + bx, ay + by)
-        }
+        },
         VectorField::Scale(v, s) => {
             let (vx, vy) = eval_vector(v, registry, x, y, t);
             let scale = eval_scalar(s, registry, x, y, t);
             (vx * scale, vy * scale)
-        }
+        },
         VectorField::ScaleConst(v, k) => {
             let (vx, vy) = eval_vector(v, registry, x, y, t);
             (vx * k, vy * k)
-        }
+        },
         VectorField::Sample(id) => match registry.get(*id) {
             Some(FieldDef::Vector(f)) => eval_vector(f, registry, x, y, t),
             _ => (0.0, 0.0),
@@ -137,21 +137,21 @@ pub fn grad_scalar(
             }
             let g = eval_scalar(field, registry, x, y, t);
             (-(x - cx) / s2 * g, -(y - cy) / s2 * g)
-        }
+        },
         ScalarField::Linear { normal, .. } => eval_vector(normal, registry, x, y, t),
         ScalarField::Add(a, b) => {
             let (ax, ay) = grad_scalar(a, registry, x, y, t);
             let (bx, by) = grad_scalar(b, registry, x, y, t);
             (ax + bx, ay + by)
-        }
+        },
         ScalarField::Scale(a, k) => {
             let (ax, ay) = grad_scalar(a, registry, x, y, t);
             (ax * k, ay * k)
-        }
+        },
         ScalarField::Negate(a) => {
             let (ax, ay) = grad_scalar(a, registry, x, y, t);
             (-ax, -ay)
-        }
+        },
         // Mul, Dot, Disk, Sample fall back to finite differences.
         _ => grad_finite_diff(field, registry, x, y, t),
     }
@@ -182,7 +182,7 @@ fn apply_falloff(falloff: Falloff, t: f32) -> f32 {
         Falloff::Smoothstep => {
             let u = 1.0 - t;
             (3.0 - 2.0 * u) * u * u
-        }
+        },
         Falloff::Quadratic => (1.0 - t) * (1.0 - t),
     }
 }

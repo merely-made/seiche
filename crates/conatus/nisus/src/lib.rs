@@ -381,20 +381,20 @@ impl fmt::Display for VoxelChunkError {
                     formatter,
                     "voxel chunk extent exceeds collider coordinates: {extent:?}"
                 )
-            }
+            },
             Self::CellCountOverflow { extent } => {
                 write!(
                     formatter,
                     "voxel chunk cell count overflows usize: {extent:?}"
                 )
-            }
+            },
             Self::CellCountMismatch { expected, actual } => write!(
                 formatter,
                 "voxel chunk expected {expected} cells but received {actual}"
             ),
             Self::AllocationFailed { cells } => {
                 write!(formatter, "voxel chunk could not allocate {cells} cells")
-            }
+            },
             Self::StaleRevision { expected, actual } => write!(
                 formatter,
                 "voxel patch expected revision {expected}, current revision is {actual}"
@@ -404,19 +404,19 @@ impl fmt::Display for VoxelChunkError {
                     formatter,
                     "voxel patch has {requested} edits, limit is {limit}"
                 )
-            }
+            },
             Self::CellOutOfBounds { cell, extent } => {
                 write!(
                     formatter,
                     "voxel cell {cell:?} is outside extent {extent:?}"
                 )
-            }
+            },
             Self::CellCoordinateTooLarge { cell } => {
                 write!(
                     formatter,
                     "voxel cell {cell:?} exceeds collider coordinates"
                 )
-            }
+            },
             Self::RevisionOverflow => formatter.write_str("voxel chunk revision overflow"),
         }
     }

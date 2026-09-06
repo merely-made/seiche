@@ -67,7 +67,7 @@ impl Force for DegreeRepulsion {
                     .iter()
                     .map(|(key, _, _)| ((degree.get(key).copied().unwrap_or(0) + 1) as f32).ln())
                     .collect()
-            }
+            },
         };
         let radius2 = self.radius * self.radius;
         let mut forces = vec![Vector::ZERO; nodes.len()];

@@ -434,7 +434,7 @@ fn shared_shape(shape: &ColliderShape) -> SharedShape {
         ColliderShape::Sphere { radius } => SharedShape::ball(*radius),
         ColliderShape::Box { half_extents } => {
             SharedShape::cuboid(half_extents[0], half_extents[1], half_extents[2])
-        }
+        },
         ColliderShape::CapsuleY {
             half_height,
             radius,
@@ -449,7 +449,7 @@ fn shared_shape(shape: &ColliderShape) -> SharedShape {
         } => {
             let occupied: Vec<_> = occupied.iter().copied().map(ivector).collect();
             SharedShape::voxels(vector(*cell_size), &occupied)
-        }
+        },
     }
 }
 

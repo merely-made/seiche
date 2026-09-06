@@ -197,7 +197,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SyncNodes(nodes));
-            }
+            },
         }
     }
 
@@ -208,7 +208,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SyncEdges(edges));
-            }
+            },
         }
     }
 
@@ -219,7 +219,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Seed(positions));
-            }
+            },
         }
     }
 
@@ -233,7 +233,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetCouplingForces(forces));
-            }
+            },
         }
     }
 
@@ -246,7 +246,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetAffinityForce(force));
-            }
+            },
         }
     }
 
@@ -259,7 +259,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetAnchorForce(force));
-            }
+            },
         }
     }
 
@@ -272,7 +272,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetForces(forces));
-            }
+            },
         }
     }
 
@@ -323,7 +323,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetLinearDamping(damping));
-            }
+            },
         }
     }
 
@@ -337,7 +337,7 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::SetNodeColliders(colliders));
-            }
+            },
         }
     }
 
@@ -350,7 +350,7 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::SetNodeMaterials(materials));
-            }
+            },
         }
     }
 
@@ -366,12 +366,12 @@ impl Physics {
         match self {
             Physics::Inline(p) => {
                 p.sim.add_scene_body(collider, position, velocity);
-            }
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::AddSceneBody(collider, position, velocity));
-            }
+            },
         }
     }
 
@@ -382,7 +382,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetNodesTangible(tangible));
-            }
+            },
         }
     }
 
@@ -393,7 +393,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::LoadScene(spec));
-            }
+            },
         }
     }
 
@@ -404,7 +404,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::ClearScene);
-            }
+            },
         }
     }
 
@@ -430,7 +430,7 @@ impl Physics {
                     rows,
                     spacing,
                 });
-            }
+            },
         }
     }
 
@@ -441,7 +441,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::ClearFluid);
-            }
+            },
         }
     }
 
@@ -452,7 +452,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetSceneField(field));
-            }
+            },
         }
     }
 
@@ -463,7 +463,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::AddEmitter(spec));
-            }
+            },
         }
     }
 
@@ -474,7 +474,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::ClearEmitters);
-            }
+            },
         }
     }
 
@@ -485,7 +485,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Pin(node, position));
-            }
+            },
         }
     }
 
@@ -496,7 +496,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Unpin(node));
-            }
+            },
         }
     }
 
@@ -508,7 +508,7 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Settle(ticks));
                 p.settling = true;
-            }
+            },
         }
     }
 
@@ -520,7 +520,7 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Halt);
                 p.settling = false;
-            }
+            },
         }
     }
 
@@ -532,7 +532,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetDragging(dragging));
-            }
+            },
         }
     }
 
@@ -541,7 +541,7 @@ impl Physics {
         match self {
             Physics::Inline(p) => {
                 p.ticks_remaining > 0 || p.dragging || p.sim.wants_continuous_tick()
-            }
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => p.settling,
         }
@@ -555,7 +555,7 @@ impl Physics {
             Physics::Inline(p) => {
                 p.generation = p.generation.wrapping_add(1);
                 view.apply_snapshot(&p.sim.snapshot(p.generation));
-            }
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 let mut latest = None;
@@ -567,7 +567,7 @@ impl Physics {
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
                 }
-            }
+            },
         }
     }
 
@@ -589,7 +589,7 @@ impl Physics {
                 p.generation = p.generation.wrapping_add(1);
                 view.apply_snapshot(&p.sim.snapshot(p.generation));
                 p.ticks_remaining > 0 || p.dragging || p.sim.wants_continuous_tick()
-            }
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 let mut latest = None;
@@ -604,7 +604,7 @@ impl Physics {
                     p.settling = update.settling;
                 }
                 p.settling
-            }
+            },
         }
     }
 }
@@ -649,7 +649,7 @@ fn run(
                 Err(TryRecvError::Disconnected) => {
                     disconnected = true;
                     break;
-                }
+                },
             }
         }
         // Step while there is work (a settle, a drag, or a perpetual scene); emit the new
@@ -700,7 +700,7 @@ fn apply(
         PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),
         PhysicsCommand::AddSceneBody(collider, position, velocity) => {
             sim.add_scene_body(collider, position, velocity);
-        }
+        },
         PhysicsCommand::SetNodesTangible(tangible) => sim.set_nodes_tangible(tangible),
         PhysicsCommand::LoadScene(spec) => sim.load_scene(&spec),
         PhysicsCommand::ClearScene => sim.clear_scene(),

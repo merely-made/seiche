@@ -211,7 +211,7 @@ impl Simulation {
                     .local_anchor2(v(anchor_b))
                     .build();
                 self.impulse_joints.insert(a, b, jt, true);
-            }
+            },
             SceneJoint::Revolute {
                 anchor_a,
                 anchor_b,
@@ -224,7 +224,7 @@ impl Simulation {
                     builder = builder.motor_velocity(m.target_vel, m.factor);
                 }
                 self.impulse_joints.insert(a, b, builder.build(), true);
-            }
+            },
             SceneJoint::Rope {
                 anchor_a,
                 anchor_b,
@@ -235,7 +235,7 @@ impl Simulation {
                     .local_anchor2(v(anchor_b))
                     .build();
                 self.impulse_joints.insert(a, b, jt, true);
-            }
+            },
             SceneJoint::Spring {
                 anchor_a,
                 anchor_b,
@@ -248,7 +248,7 @@ impl Simulation {
                     .local_anchor2(v(anchor_b))
                     .build();
                 self.impulse_joints.insert(a, b, jt, true);
-            }
+            },
         }
     }
 

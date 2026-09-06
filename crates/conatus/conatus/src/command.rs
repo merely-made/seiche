@@ -157,10 +157,10 @@ fn apply(
             .map(|()| CommandEffect::Applied),
         BodyCommand::SetKind { body, kind } => {
             bodies.set_kind(body, kind).map(|()| CommandEffect::Applied)
-        }
+        },
         BodyCommand::SetGravity { gravity } => {
             bodies.set_gravity(gravity).map(|()| CommandEffect::Applied)
-        }
+        },
         BodyCommand::ApplyForce { body, force } => bodies
             .apply_force(body, force)
             .map(|()| CommandEffect::Applied),

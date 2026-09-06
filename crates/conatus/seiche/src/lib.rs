@@ -343,7 +343,7 @@ impl std::fmt::Display for RepulsionSolverError {
                     formatter,
                     "repulsion solver returned non-finite {component:?} force at {index}"
                 )
-            }
+            },
             Self::Backend(error) => write!(formatter, "repulsion solver failed: {error}"),
         }
     }

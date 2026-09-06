@@ -243,7 +243,7 @@ impl Quadtree {
         match self {
             Quadtree::Empty => {
                 *self = Quadtree::Leaf { position, mass };
-            }
+            },
             Quadtree::Leaf {
                 position: existing_pos,
                 mass: existing_mass,
@@ -288,7 +288,7 @@ impl Quadtree {
                     total_mass,
                     children,
                 };
-            }
+            },
             Quadtree::Internal {
                 bounds: b,
                 center_of_mass,
@@ -303,7 +303,7 @@ impl Quadtree {
                     (center_of_mass.y * *total_mass + position.y * mass) / new_total,
                 );
                 *total_mass = new_total;
-            }
+            },
         }
     }
 
@@ -328,7 +328,7 @@ impl Quadtree {
                 let distance = distance_sq.sqrt();
                 let force = c_repulse * (k * k) * *mass / distance;
                 (delta / distance) * force
-            }
+            },
             Quadtree::Internal {
                 bounds,
                 center_of_mass,
@@ -349,7 +349,7 @@ impl Quadtree {
                     acc += child.compute_repulsion(target, k, epsilon, c_repulse, theta);
                 }
                 acc
-            }
+            },
         }
     }
 }

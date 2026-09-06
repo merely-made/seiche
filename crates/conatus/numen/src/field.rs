@@ -136,7 +136,7 @@ impl FieldExtent {
             } => {
                 let inside = (x - min_x).min(max_x - x).min(y - min_y).min(max_y - y);
                 Some(inside)
-            }
+            },
             FieldExtent::Polygon { points } => {
                 if points.len() < 3 {
                     return None;
@@ -154,7 +154,7 @@ impl FieldExtent {
                 } else {
                     -nearest
                 })
-            }
+            },
         }
     }
 }

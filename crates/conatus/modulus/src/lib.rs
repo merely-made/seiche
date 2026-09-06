@@ -514,31 +514,31 @@ impl fmt::Display for BrickMapError {
                     formatter,
                     "brick map has {actual} bricks; maximum is {maximum}"
                 )
-            }
+            },
             Self::PointerVolumeOverflow { pointer_extent } => {
                 write!(
                     formatter,
                     "pointer volume overflows usize: {pointer_extent:?}"
                 )
-            }
+            },
             Self::ExtentExceeded { extent, maximum } => {
                 write!(
                     formatter,
                     "selection bounds {extent:?} exceed the fixed pointer extent {maximum:?}"
                 )
-            }
+            },
             Self::ProjectionNotAdvanced { current, offered } => {
                 write!(
                     formatter,
                     "a changed selection needs a projection revision past {current}; offered {offered}"
                 )
-            }
+            },
             Self::AllocationFailed { entries } => {
                 write!(
                     formatter,
                     "pointer volume could not allocate {entries} entries"
                 )
-            }
+            },
             Self::UnknownKey { key } => write!(formatter, "brick key is not selected: {key:?}"),
             Self::MissingBrick { key } => write!(formatter, "selected brick is missing: {key:?}"),
             Self::InvalidBrickLength {
@@ -672,7 +672,11 @@ mod tests {
         let second = map
             .retarget(BrickProjectionRevision(2), [[1, 0, 0], [2, 0, 0]], source)
             .unwrap();
-        assert_eq!(map.key_slots[&[1, 0, 0]], b_slot, "a kept brick keeps its slot");
+        assert_eq!(
+            map.key_slots[&[1, 0, 0]],
+            b_slot,
+            "a kept brick keeps its slot"
+        );
         assert_eq!(second.evicted, 1);
         assert_eq!(second.retained, 1);
         assert_eq!(

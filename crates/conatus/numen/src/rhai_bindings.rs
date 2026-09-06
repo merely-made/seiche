@@ -328,7 +328,7 @@ mod tests {
         match p.registry.get(id) {
             Some(FieldDef::Scalar(ScalarField::Gaussian { sigma, .. })) => {
                 assert_eq!(*sigma, 10.0);
-            }
+            },
             _ => panic!("expected Gaussian"),
         }
     }
@@ -419,7 +419,7 @@ mod tests {
             } => {
                 assert_eq!(*max_steps, 32);
                 assert_eq!(*step_size, 4.0);
-            }
+            },
             _ => panic!("expected FieldLine"),
         }
     }
@@ -464,7 +464,7 @@ mod tests {
         .unwrap();
         let id = p.registry.lookup("ramp").unwrap();
         match p.registry.get(id) {
-            Some(FieldDef::Scalar(ScalarField::Add(_, _))) => {}
+            Some(FieldDef::Scalar(ScalarField::Add(_, _))) => {},
             _ => panic!("expected Add"),
         }
     }

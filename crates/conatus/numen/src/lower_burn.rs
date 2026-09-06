@@ -76,20 +76,20 @@ pub fn lower_scalar(
             let ta = lower_scalar(a, registry, xs.clone(), ys.clone(), time)?;
             let tb = lower_scalar(b, registry, xs, ys, time)?;
             Ok(ta + tb)
-        }
+        },
         ScalarField::Mul(a, b) => {
             let ta = lower_scalar(a, registry, xs.clone(), ys.clone(), time)?;
             let tb = lower_scalar(b, registry, xs, ys, time)?;
             Ok(ta * tb)
-        }
+        },
         ScalarField::Scale(a, k) => {
             let ta = lower_scalar(a, registry, xs, ys, time)?;
             Ok(ta.mul_scalar(*k))
-        }
+        },
         ScalarField::Negate(a) => {
             let ta = lower_scalar(a, registry, xs, ys, time)?;
             Ok(ta.neg())
-        }
+        },
         ScalarField::Gaussian { center, sigma } => {
             let (cx, cy) = expect_const_vec(center, "Gaussian center must be ConstVec")?;
             let s2 = sigma * sigma;
@@ -101,12 +101,12 @@ pub fn lower_scalar(
             let dist_sq = dx.clone() * dx + dy.clone() * dy;
             // exp(-dist_sq / (2 σ²)) = exp(dist_sq / -2σ²)
             Ok(dist_sq.div_scalar(-2.0 * s2).exp())
-        }
+        },
         ScalarField::Linear { normal, offset } => {
             let (nx, ny) = expect_const_vec(normal, "Linear normal must be ConstVec")?;
             let result = xs.mul_scalar(nx) + ys.mul_scalar(ny);
             Ok(result.add_scalar(*offset))
-        }
+        },
         ScalarField::Sample(id) => match registry.get(*id) {
             Some(FieldDef::Scalar(f)) => lower_scalar(f, registry, xs, ys, time),
             Some(FieldDef::Vector(_)) => Err(LowerError::SampleTypeMismatch {
@@ -132,12 +132,12 @@ pub fn lower_scalar(
             // Mask zero outside the radius.
             let outside = d.greater_elem(*radius);
             Ok(f_val.mask_fill(outside, 0.0))
-        }
+        },
         ScalarField::Dot(a, b) => {
             let (ax, ay) = lower_vector(a, registry, xs.clone(), ys.clone(), time)?;
             let (bx, by) = lower_vector(b, registry, xs, ys, time)?;
             Ok(ax * bx + ay * by)
-        }
+        },
     }
 }
 
@@ -151,11 +151,11 @@ fn apply_falloff_tensor(u: Tensor<1>, falloff: Falloff) -> Tensor<1> {
             let v2 = v.clone() * v.clone();
             let factor = v.mul_scalar(-2.0).add_scalar(3.0);
             factor * v2
-        }
+        },
         Falloff::Quadratic => {
             let v = u.neg().add_scalar(1.0);
             v.clone() * v
-        }
+        },
     }
 }
 
@@ -181,21 +181,21 @@ pub fn lower_vector(
             // Perp((x, y)) = (-y, x)
             let (vx, vy) = lower_vector(v, registry, xs, ys, time)?;
             Ok((vy.neg(), vx))
-        }
+        },
         VectorField::Add(a, b) => {
             let (ax, ay) = lower_vector(a, registry, xs.clone(), ys.clone(), time)?;
             let (bx, by) = lower_vector(b, registry, xs, ys, time)?;
             Ok((ax + bx, ay + by))
-        }
+        },
         VectorField::ScaleConst(v, k) => {
             let (vx, vy) = lower_vector(v, registry, xs, ys, time)?;
             Ok((vx.mul_scalar(*k), vy.mul_scalar(*k)))
-        }
+        },
         VectorField::Scale(v, s) => {
             let (vx, vy) = lower_vector(v, registry, xs.clone(), ys.clone(), time)?;
             let scalar = lower_scalar(s, registry, xs, ys, time)?;
             Ok((vx * scalar.clone(), vy * scalar))
-        }
+        },
         VectorField::Gradient(scalar) => lower_gradient(scalar, registry, xs, ys, time),
         VectorField::Sample(id) => match registry.get(*id) {
             Some(FieldDef::Vector(f)) => lower_vector(f, registry, xs, ys, time),
@@ -231,20 +231,20 @@ fn lower_gradient(
                 xs.zeros_like().add_scalar(nx),
                 ys.zeros_like().add_scalar(ny),
             ))
-        }
+        },
         ScalarField::Add(a, b) => {
             let (ax, ay) = lower_gradient(a, registry, xs.clone(), ys.clone(), time)?;
             let (bx, by) = lower_gradient(b, registry, xs, ys, time)?;
             Ok((ax + bx, ay + by))
-        }
+        },
         ScalarField::Scale(a, k) => {
             let (ax, ay) = lower_gradient(a, registry, xs, ys, time)?;
             Ok((ax.mul_scalar(*k), ay.mul_scalar(*k)))
-        }
+        },
         ScalarField::Negate(a) => {
             let (ax, ay) = lower_gradient(a, registry, xs, ys, time)?;
             Ok((ax.neg(), ay.neg()))
-        }
+        },
         ScalarField::Gaussian { center, sigma } => {
             // ∇gaussian = -(p - c)/σ² · gaussian(p)
             let (cx, cy) = expect_const_vec(center, "Gaussian center must be ConstVec")?;
@@ -258,7 +258,7 @@ fn lower_gradient(
             let g = dist_sq.div_scalar(-2.0 * s2).exp();
             let factor = g.div_scalar(-s2);
             Ok((dx * factor.clone(), dy * factor))
-        }
+        },
         ScalarField::Sample(id) => match registry.get(*id) {
             Some(FieldDef::Scalar(f)) => lower_gradient(f, registry, xs, ys, time),
             Some(FieldDef::Vector(_)) => Err(LowerError::SampleTypeMismatch {
@@ -273,7 +273,7 @@ fn lower_gradient(
             let (agx, agy) = lower_gradient(a, registry, xs.clone(), ys.clone(), time)?;
             let (bgx, bgy) = lower_gradient(b, registry, xs, ys, time)?;
             Ok((av.clone() * bgx + bv.clone() * agx, av * bgy + bv * agy))
-        }
+        },
         ScalarField::Dot(_, _) => Err(LowerError::UnsupportedOperator("Gradient(Dot)")),
         ScalarField::Disk { .. } => Err(LowerError::UnsupportedOperator("Gradient(Disk)")),
     }

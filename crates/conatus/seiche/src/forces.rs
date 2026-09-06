@@ -92,7 +92,7 @@ impl Force for NodeExclusion {
                             }
                         }
                         return;
-                    }
+                    },
                     Err(error) => tracing::warn!(
                         ?error,
                         nodes = nodes.len(),

@@ -49,11 +49,11 @@ impl fmt::Display for BodyError {
             Self::InvalidBody(reason) => write!(f, "invalid body: {reason}"),
             Self::InvalidCollider { part, reason } => {
                 write!(f, "invalid collider part {part}: {reason}")
-            }
+            },
             Self::InvalidQuery(reason) => write!(f, "invalid spatial query: {reason}"),
             Self::InvalidOperation { body, operation } => {
                 write!(f, "body {} does not support {operation}", body.raw())
-            }
+            },
             Self::NotVoxelCollider(id) => write!(
                 f,
                 "collider part {} on body {} is not a voxel grid",
@@ -734,14 +734,14 @@ fn validate_shape(shape: &ColliderShape) -> Result<(), &'static str> {
         } => {
             positive(*half_height, "capsule half-height")?;
             positive(*radius, "capsule radius")
-        }
+        },
         ColliderShape::CylinderY {
             half_height,
             radius,
         } => {
             positive(*half_height, "cylinder half-height")?;
             positive(*radius, "cylinder radius")
-        }
+        },
         ColliderShape::VoxelGrid { cell_size, .. } => positive3(*cell_size, "voxel cell size"),
     }
 }

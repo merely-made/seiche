@@ -44,7 +44,7 @@ impl std::fmt::Display for RepulsionInputError {
                     formatter,
                     "repulsion needs equally-sized x/y positions, got {xs} and {ys}"
                 )
-            }
+            },
         }
     }
 }

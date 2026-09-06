@@ -333,7 +333,7 @@ impl Fluid {
                             Vector2D::new(0.0, -1.0)
                         };
                         n * (rmin - d)
-                    }
+                    },
                     ContactShape::Obb { half, angle } => {
                         // The particle in the box's local frame (rotate the offset by -angle).
                         let rel = self.pos[i] - contact.center;
@@ -354,7 +354,7 @@ impl Fluid {
                             (0.0, py * ly.signum())
                         };
                         Vector2D::new(plx * co - ply * s, plx * s + ply * co)
-                    }
+                    },
                 };
                 self.pos[i] += push;
                 // The particle can't move into the solid: kill its inward velocity component along

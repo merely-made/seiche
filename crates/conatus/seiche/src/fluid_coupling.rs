@@ -73,7 +73,7 @@ impl Simulation {
                     NodeCollider::Ball { radius } => FluidContact::circle(center, *radius),
                     NodeCollider::Square { half } | NodeCollider::RoundedSquare { half, .. } => {
                         FluidContact::obb(center, (*half, *half), body.rotation().angle())
-                    }
+                    },
                     NodeCollider::Hull { fallback, .. } => FluidContact::circle(center, *fallback),
                 };
                 handles.push(*handle);

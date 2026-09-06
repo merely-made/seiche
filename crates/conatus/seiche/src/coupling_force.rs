@@ -130,7 +130,7 @@ impl Force for CouplingForce {
                         body.add_force(f, true);
                     }
                 }
-            }
+            },
             // Hard pushout wherever the scalar is positive ("inside"): push along
             // +grad scaled by how far inside the body is.
             CouplingResponse::ContainmentWall => {
@@ -145,7 +145,7 @@ impl Force for CouplingForce {
                         }
                     }
                 }
-            }
+            },
             // Multiplicative velocity damping while inside a positive region.
             CouplingResponse::DampenInside { factor } => {
                 let Some(scalar) = self.scalar() else { return };
@@ -157,7 +157,7 @@ impl Force for CouplingForce {
                         }
                     }
                 }
-            }
+            },
             // Set velocity to the vector field at this position (scaled).
             CouplingResponse::AlignVelocity => {
                 let Some(field) = self.vector() else { return };
@@ -167,7 +167,7 @@ impl Force for CouplingForce {
                         body.set_linvel(Vector::new(vx * self.strength, vy * self.strength), true);
                     }
                 }
-            }
+            },
             // Advect: nudge position along the field this step (pos += dt * field).
             CouplingResponse::FlowAdvect => {
                 let Some(field) = self.vector() else { return };
@@ -179,11 +179,11 @@ impl Force for CouplingForce {
                         body.set_translation(next, true);
                     }
                 }
-            }
+            },
             // Open tail (visual / navigational / selection / semantic / trigger):
             // not a force response, so the integrator leaves these bodies untouched.
             // The consumer that owns the family acts on them elsewhere.
-            CouplingResponse::Open { .. } => {}
+            CouplingResponse::Open { .. } => {},
         }
     }
 }

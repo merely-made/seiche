@@ -46,12 +46,12 @@ impl NodeCollider {
             NodeCollider::Square { half } => {
                 let h = half.max(1.0);
                 SharedShape::cuboid(h, h)
-            }
+            },
             NodeCollider::RoundedSquare { half, border } => {
                 let b = border.clamp(0.1, half - 0.1).max(0.1);
                 let h = (half - b).max(1.0);
                 SharedShape::round_cuboid(h, h, b)
-            }
+            },
             NodeCollider::Hull { points, fallback } => {
                 // parry's `convex_hull` *asserts* `len >= 2` (it panics, not returns `None`) and
                 // still yields nothing useful for a collinear set, so guard the degenerate cases
@@ -63,7 +63,7 @@ impl NodeCollider {
                     SharedShape::convex_hull(&pts)
                         .unwrap_or_else(|| SharedShape::ball(fallback.max(1.0)))
                 }
-            }
+            },
         }
     }
 }
