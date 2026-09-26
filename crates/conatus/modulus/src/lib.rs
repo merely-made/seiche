@@ -383,6 +383,8 @@ impl BrickMap {
             .find_map(|(key, found)| (*found == slot).then(|| self.key_coord(*key)))
     }
 
+    /// `slot`'s atlas bytes in Z-Y-X order, X contiguous, for any slot
+    /// [`Self::atlas_slot_origin`] places; a free slot holds what it last did.
     pub fn slot_texels(&self, slot: u32) -> Option<Vec<u8>> {
         let [base_x, base_y, base_z] = self.atlas_slot_origin(slot)?;
         let [width, height, _] = self.atlas_extent();
@@ -421,8 +423,12 @@ impl BrickMap {
             + local[0]) as usize]
     }
 
+    /// The texel origin of `slot`'s box in the atlas, for any slot from 1
+    /// through [`Self::capacity`], held or free. Slot numbers are not bounded
+    /// by the resident count: a shrinking retarget keeps a retained brick's
+    /// slot. Slot 0 is air.
     pub fn atlas_slot_origin(&self, slot: u32) -> Option<[u32; 3]> {
-        if slot == 0 || slot as usize > self.key_slots.len() {
+        if slot == 0 || slot as usize > self.capacity() {
             return None;
         }
         let index = slot - 1;
