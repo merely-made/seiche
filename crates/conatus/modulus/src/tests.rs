@@ -192,28 +192,75 @@ fn a_retargeted_map_reads_like_a_rebuilt_one() {
     assert_eq!(travelled.origin(), rebuilt.origin());
 }
 
-/// Three bricks shrunk to the last, which keeps slot 3 while only one key
-/// stays resident: the case the paging lane caught.
-fn shrunk_to_a_high_slot() -> BrickMap {
-    let bricks = [solid(2), solid(3), solid(4)];
-    let source = |key: BrickKey| bricks.get(key[0] as usize).map(|brick| brick.as_slice());
-    let mut map = BrickMap::with_capacity(BrickProjectionRevision(0), 1, [4, 1, 1]).unwrap();
-    map.retarget(
-        BrickProjectionRevision(1),
-        [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
-        source,
-    )
-    .unwrap();
-    let shrink = map
-        .retarget(BrickProjectionRevision(2), [[2, 0, 0]], source)
+/// The recommended 8 MiB host budget on a device at wgpu's default limits.
+const CARD: AtlasLimits = AtlasLimits {
+    max_texture_dimension_3d: 2048,
+    max_atlas_bytes: 8 << 20,
+};
+
+/// `width` by `depth` bricks on the ground layer, in key order.
+fn grid(width: i16, depth: i16) -> Vec<BrickKey> {
+    (0..width)
+        .flat_map(|x| (0..depth).map(move |z| [x, 0, z]))
+        .collect()
+}
+
+/// A solid brick per key, numbered from 2 so neighbours differ.
+fn solids(keys: &[BrickKey]) -> BTreeMap<BrickKey, [u8; BRICK_EDGE.pow(3) as usize]> {
+    keys.iter()
+        .enumerate()
+        .map(|(index, key)| (*key, solid(index as u8 % 250 + 2)))
+        .collect()
+}
+
+/// A brick's lowest voxel.
+fn voxel_origin(key: BrickKey) -> [i32; 3] {
+    key.map(|axis| i32::from(axis) * BRICK_EDGE as i32)
+}
+
+/// A selection shrunk to its last key, which keeps the highest slot while
+/// only one key stays resident: the case the paging lane caught.
+struct Shrunk {
+    map: BrickMap,
+    kept: BrickKey,
+    slot: u32,
+    material: u8,
+}
+
+/// The paging lane's case over `keys`, in whatever atlas `map` carries.
+fn shrink_to_the_last(mut map: BrickMap, keys: &[BrickKey]) -> Shrunk {
+    let bricks = solids(keys);
+    let source = |key: BrickKey| bricks.get(&key).map(|brick| brick.as_slice());
+    map.retarget(BrickProjectionRevision(1), keys.iter().copied(), source)
         .unwrap();
-    assert_eq!((shrink.evicted, shrink.retained), (2, 1));
+    let (&kept, brick) = bricks.last_key_value().expect("a selection");
+    let shrink = map
+        .retarget(BrickProjectionRevision(2), [kept], source)
+        .unwrap();
+    assert_eq!((shrink.evicted, shrink.retained), (keys.len() - 1, 1));
+    let slot = map.key_slots[&kept];
     assert_eq!(
-        map.key_slots[&[2, 0, 0]],
-        3,
-        "the kept brick keeps its slot"
+        slot as usize,
+        keys.len(),
+        "the kept brick keeps the top slot"
     );
-    map
+    Shrunk {
+        map,
+        kept,
+        slot,
+        material: brick[0],
+    }
+}
+
+/// Three bricks in one atlas row, and 3,000 in twelve rows of a card-sized
+/// atlas, past the default cap.
+fn shrunk_cases() -> [Shrunk; 2] {
+    let row = BrickMap::with_capacity(BrickProjectionRevision(0), 1, [4, 1, 1]).unwrap();
+    let card = BrickMap::with_limits(BrickProjectionRevision(0), 3_000, [60, 1, 50], CARD).unwrap();
+    [
+        shrink_to_the_last(row, &[[0, 0, 0], [1, 0, 0], [2, 0, 0]]),
+        shrink_to_the_last(card, &grid(60, 50)),
+    ]
 }
 
 /// What the shared shader's `brick_material_at` reads: the pointer volume,
@@ -245,36 +292,58 @@ fn first_solid_down(read: impl Fn([i32; 3]) -> u8, x: i32, z: i32) -> Option<(i3
 
 #[test]
 fn a_brick_kept_through_a_shrink_refreshes_in_its_slot() {
-    let mut map = shrunk_to_a_high_slot();
-    let replacement = solid(9);
-    let changed = map
-        .refresh([[2, 0, 0]], |_| Some(replacement.as_slice()))
-        .unwrap();
-    assert_eq!(changed, vec![3]);
-    assert_eq!(
-        map.pointer_at([0, 0, 0]),
-        Some(3),
-        "the pointer still names it"
-    );
-    assert_eq!(map.slot_texels(3), Some(replacement.to_vec()));
-    assert_eq!(map.material_at([16, 0, 0]), 9);
+    for Shrunk {
+        mut map,
+        kept,
+        slot,
+        ..
+    } in shrunk_cases()
+    {
+        let replacement = solid(255);
+        let changed = map
+            .refresh([kept], |_| Some(replacement.as_slice()))
+            .unwrap();
+        assert_eq!(changed, vec![slot]);
+        assert_eq!(
+            map.pointer_at([0, 0, 0]),
+            Some(slot),
+            "the pointer names it"
+        );
+        assert_eq!(map.slot_texels(slot), Some(replacement.to_vec()));
+        assert_eq!(map.material_at(voxel_origin(kept)), 255);
+    }
 }
 
 #[test]
 fn a_pick_after_a_shrink_meets_the_ground_the_tracer_draws() {
-    let map = shrunk_to_a_high_slot();
-    let drawn = first_solid_down(|at| traced_material_at(&map, at), 20, 3);
-    assert_eq!(drawn, Some((7, 4)), "the tracer draws the kept brick");
-    assert_eq!(first_solid_down(|at| map.material_at(at), 20, 3), drawn);
+    for Shrunk {
+        map,
+        kept,
+        material,
+        ..
+    } in shrunk_cases()
+    {
+        let [x, _, z] = voxel_origin(kept);
+        let drawn = first_solid_down(|at| traced_material_at(&map, at), x + 4, z + 3);
+        assert_eq!(
+            drawn,
+            Some((7, material)),
+            "the tracer draws the kept brick"
+        );
+        assert_eq!(
+            first_solid_down(|at| map.material_at(at), x + 4, z + 3),
+            drawn
+        );
 
-    // Evicted ground, the kept brick and the empty pointer cells beyond it
-    // read alike through the map and through the shader's path.
-    let edge = BRICK_EDGE as i32;
-    for x in 0..6 * edge {
-        for y in 0..edge {
-            for z in 0..edge {
-                let at = [x, y, z];
-                assert_eq!(map.material_at(at), traced_material_at(&map, at), "{at:?}");
+        // Evicted ground, the kept brick and the empty pointer cells around
+        // it read alike through the map and through the shader's path.
+        let edge = BRICK_EDGE as i32;
+        for dx in -2 * edge..3 * edge {
+            for y in 0..edge {
+                for dz in -2 * edge..3 * edge {
+                    let at = [x + dx, y, z + dz];
+                    assert_eq!(map.material_at(at), traced_material_at(&map, at), "{at:?}");
+                }
             }
         }
     }
@@ -282,19 +351,153 @@ fn a_pick_after_a_shrink_meets_the_ground_the_tracer_draws() {
 
 #[test]
 fn every_slot_the_atlas_holds_has_its_own_box_inside_it() {
-    let map = BrickMap::with_capacity(BrickProjectionRevision(0), 2, [1, 1, 1]).unwrap();
-    let extent = map.atlas_extent();
-    let mut origins = BTreeSet::new();
-    for slot in 1..=map.capacity() as u32 {
-        let origin = map.atlas_slot_origin(slot).expect("a slot within capacity");
-        assert!(
-            (0..3).all(|axis| origin[axis] + BRICK_EDGE <= extent[axis]),
-            "slot {slot} at {origin:?}"
-        );
-        assert!(origins.insert(origin), "slot {slot} shares {origin:?}");
+    let rows = BrickMap::with_capacity(BrickProjectionRevision(0), 2, [1, 1, 1]).unwrap();
+    let card =
+        BrickMap::with_limits(BrickProjectionRevision(0), CARD.max_bricks(), [1; 3], CARD).unwrap();
+    for map in [rows, card] {
+        let extent = map.atlas_extent();
+        let mut origins = BTreeSet::new();
+        for slot in 1..=map.capacity() as u32 {
+            let origin = map.atlas_slot_origin(slot).expect("a slot within capacity");
+            assert!(
+                (0..3).all(|axis| origin[axis] + BRICK_EDGE <= extent[axis]),
+                "slot {slot} at {origin:?}"
+            );
+            assert!(origins.insert(origin), "slot {slot} shares {origin:?}");
+        }
+        assert_eq!(map.atlas_slot_origin(0), None, "slot 0 is air");
+        assert_eq!(map.atlas_slot_origin(map.capacity() as u32 + 1), None);
     }
-    assert_eq!(map.atlas_slot_origin(0), None, "slot 0 is air");
-    assert_eq!(map.atlas_slot_origin(map.capacity() as u32 + 1), None);
+}
+
+#[test]
+fn default_limits_keep_the_historical_cap() {
+    assert_eq!(AtlasLimits::default(), AtlasLimits::DEFAULT);
+    assert_eq!(
+        (AtlasLimits::DEFAULT.max_bricks(), MAX_BRICKS),
+        (2_047, 2_047)
+    );
+    let revision = BrickProjectionRevision(0);
+    let too_many = |actual| BrickMapError::TooManyBricks {
+        actual,
+        maximum: 2_047,
+    };
+
+    // Rows under the default cap, refused past it as before.
+    let eight = BrickMap::with_capacity(revision, 8, [1, 1, 1]).unwrap();
+    assert_eq!((eight.capacity(), eight.atlas().len()), (2_047, 1 << 20));
+    let zero = BrickMap::with_capacity(revision, 0, [1, 1, 1]).unwrap();
+    assert_eq!(zero.slots(), [16, 1, 16], "zero rows still build one");
+    let nine = BrickMap::with_capacity(revision, 9, [1, 1, 1]);
+    assert_eq!(nine.unwrap_err(), too_many(2_303));
+
+    // Asking by bricks under the default limits builds the same atlas.
+    let by_bricks = BrickMap::with_limits(revision, 2_047, [1; 3], AtlasLimits::DEFAULT).unwrap();
+    assert_eq!(by_bricks.slots(), eight.slots());
+    let past = BrickMap::with_limits(revision, 2_048, [1; 3], AtlasLimits::DEFAULT);
+    assert_eq!(past.unwrap_err(), too_many(2_048));
+
+    // from_keys has no limits of its own and keeps the default cap.
+    let keys: Vec<BrickKey> = (0..2_048).map(|x| [x, 0, 0]).collect();
+    let whole = BrickMap::from_keys(revision, keys, |_| None);
+    assert_eq!(whole.unwrap_err(), too_many(2_048));
+}
+
+#[test]
+fn a_card_sized_map_holds_more_than_the_default_cap() {
+    assert_eq!(CARD.max_bricks(), 16_383, "8 MiB is 64 rows");
+    let keys = grid(60, 50);
+    let bricks = solids(&keys);
+    let mut map =
+        BrickMap::with_limits(BrickProjectionRevision(0), keys.len(), [60, 1, 50], CARD).unwrap();
+    assert_eq!(
+        map.slots(),
+        [16, 12, 16],
+        "3,000 bricks round up to 12 rows"
+    );
+    assert_eq!(map.capacity(), 3_071);
+    assert_eq!(BrickTraceSpace::from_map(&map).atlas_slots, [16, 12, 16, 0]);
+    let delta = map
+        .retarget(BrickProjectionRevision(1), keys.iter().copied(), |key| {
+            bricks.get(&key).map(|brick| brick.as_slice())
+        })
+        .unwrap();
+    assert_eq!(delta.loaded_slots.len(), 3_000);
+
+    // Every brick, in rows past the old cap too, reads its own material
+    // through the map and through the shader's path.
+    for (key, brick) in &bricks {
+        let low = voxel_origin(*key);
+        for at in [low, low.map(|axis| axis + BRICK_EDGE as i32 - 1)] {
+            assert_eq!(map.material_at(at), brick[0], "{key:?}");
+            assert_eq!(traced_material_at(&map, at), brick[0], "{key:?}");
+        }
+    }
+}
+
+#[test]
+fn card_limits_refuse_past_the_budget_and_the_texture_edge() {
+    let revision = BrickProjectionRevision(0);
+    // The budget binds first: 8 MiB is 64 of the 256 rows a 2,048 edge allows.
+    let full = BrickMap::with_limits(revision, 16_383, [1, 1, 1], CARD).unwrap();
+    assert_eq!(full.atlas().len(), 8 << 20);
+    assert_eq!(
+        BrickMap::with_limits(revision, 16_384, [1, 1, 1], CARD).unwrap_err(),
+        BrickMapError::TooManyBricks {
+            actual: 16_384,
+            maximum: 16_383,
+        }
+    );
+
+    // The edge binds first: the web tier's 256 texels are 32 rows, whatever
+    // the budget, and bound every pointer volume axis too.
+    let web = AtlasLimits {
+        max_texture_dimension_3d: 256,
+        max_atlas_bytes: u64::MAX,
+    };
+    let tall = BrickMap::with_limits(revision, 8_191, [256, 1, 1], web).unwrap();
+    assert_eq!(tall.atlas_extent(), [128, 256, 128]);
+    assert_eq!(
+        BrickMap::with_limits(revision, 8_192, [1, 1, 1], web).unwrap_err(),
+        BrickMapError::TooManyBricks {
+            actual: 8_192,
+            maximum: 8_191,
+        }
+    );
+    assert_eq!(
+        BrickMap::with_limits(revision, 1, [1, 257, 1], web).unwrap_err(),
+        BrickMapError::TextureDimensionExceeded {
+            pointer_extent: [1, 257, 1],
+            maximum: 256,
+        }
+    );
+
+    // Limits too small for one row refuse even an empty map, and no budget
+    // takes the atlas past 4 GiB.
+    for cramped in [
+        AtlasLimits {
+            max_texture_dimension_3d: 64,
+            ..web
+        },
+        AtlasLimits {
+            max_atlas_bytes: 100_000,
+            ..CARD
+        },
+    ] {
+        assert_eq!(cramped.max_bricks(), 0);
+        assert!(matches!(
+            BrickMap::with_limits(revision, 0, [1, 1, 1], cramped),
+            Err(BrickMapError::TooManyBricks {
+                actual: 0,
+                maximum: 0
+            })
+        ));
+    }
+    let boundless = AtlasLimits {
+        max_texture_dimension_3d: u32::MAX,
+        max_atlas_bytes: u64::MAX,
+    };
+    assert_eq!(boundless.max_bricks(), 32_767 * 256 - 1);
 }
 
 #[test]

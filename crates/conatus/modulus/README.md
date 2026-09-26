@@ -18,6 +18,13 @@ What this crate owns:
   texture identity to them never reallocates — retained bricks keep their
   atlas slots, evicted slots recycle deterministically, and a retarget
   names exactly the loaded slots a publisher must move.
+- **`AtlasLimits`** (2026-09-26) — what a host's card allows a
+  capacity-fixed atlas. `with_limits` takes a brick count, rounds it up to
+  whole atlas rows, and refuses past the device's
+  `max_texture_dimension_3d` or the host's byte budget (8 MiB is the
+  recommended default). The host fills it from `device.limits()`, so the
+  crate stays GPU-free. `AtlasLimits::DEFAULT` is the 1 MiB, 2,047-brick
+  cap that `MAX_BRICKS` names and `from_keys` and `with_capacity` keep.
 - **`BrickTraceSpace`** — the exact uniform fields the shader consumes.
 - **`BRICK_DDA_WGSL`** — pointer lookup, ray-box clipping, and voxel DDA
   from a caller-supplied ray. No camera, lighting, material, body, or

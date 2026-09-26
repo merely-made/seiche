@@ -16,14 +16,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use bytemuck::{Pod, Zeroable};
 
 mod error;
+mod limits;
 
 pub use error::BrickMapError;
+pub use limits::AtlasLimits;
 
 pub const BRICK_EDGE: u32 = 8;
 pub const ATLAS_SLOTS_X: u32 = 16;
 pub const ATLAS_SLOTS_Z: u32 = 16;
+/// Atlas rows under [`AtlasLimits::DEFAULT`].
 pub const MAX_ATLAS_SLOTS_Y: u32 = 8;
-pub const MAX_BRICKS: usize = (ATLAS_SLOTS_X * ATLAS_SLOTS_Z * MAX_ATLAS_SLOTS_Y - 1) as usize;
+/// The brick cap of [`AtlasLimits::DEFAULT`], which [`BrickMap::from_keys`]
+/// and [`BrickMap::with_capacity`] keep; [`BrickMap::with_limits`] sizes an
+/// atlas to the host's card instead.
+pub const MAX_BRICKS: usize = AtlasLimits::DEFAULT.max_bricks();
 
 /// The shared WGSL module for pointer lookup, ray-box clipping, and voxel DDA.
 ///
@@ -114,13 +120,7 @@ impl BrickMap {
             .into_iter()
             .try_fold(1usize, |total, axis| total.checked_mul(axis as usize))
             .ok_or(BrickMapError::PointerVolumeOverflow { pointer_extent })?;
-        let mut pointers = Vec::new();
-        pointers
-            .try_reserve_exact(pointer_len)
-            .map_err(|_| BrickMapError::AllocationFailed {
-                entries: pointer_len,
-            })?;
-        pointers.resize(pointer_len, 0);
+        let pointers = zeroed(pointer_len)?;
 
         let slot_count = keys.len() as u32 + 1;
         let slots = [
@@ -188,44 +188,79 @@ impl BrickMap {
     /// spots (one of which is the reserved air slot), and `pointer_extent`
     /// fixes the pointer volume; a retarget moves the volume's origin but
     /// never its extent. A consumer keying texture identity to these
-    /// extents therefore never reallocates while the map lives.
+    /// extents therefore never reallocates while the map lives. Rows past
+    /// [`AtlasLimits::DEFAULT`]'s eight are refused; [`Self::with_limits`]
+    /// sizes the atlas to the host's card instead.
     pub fn with_capacity(
         projection_revision: BrickProjectionRevision,
         capacity_rows: u32,
         pointer_extent: [u32; 3],
     ) -> Result<Self, BrickMapError> {
-        let slots = [ATLAS_SLOTS_X, capacity_rows.max(1), ATLAS_SLOTS_Z];
-        let usable = (slots[0] * slots[1] * slots[2] - 1) as usize;
-        if usable > MAX_BRICKS {
+        let rows = capacity_rows.max(1);
+        if rows > AtlasLimits::DEFAULT.max_rows() {
             return Err(BrickMapError::TooManyBricks {
-                actual: usable,
+                actual: limits::bricks_in(rows),
                 maximum: MAX_BRICKS,
             });
         }
+        Self::capacity_fixed(projection_revision, rows, pointer_extent)
+    }
+
+    /// Builds an empty capacity-fixed map sized to the host's card, holding
+    /// at least `bricks`: the count rounds up to whole atlas rows, so
+    /// [`Self::capacity`] can exceed it.
+    ///
+    /// Refuses more bricks than `limits` allow and any pointer axis past
+    /// their texture edge, and allocates fallibly, so an oversized budget is
+    /// an error rather than an abort. As with [`Self::with_capacity`], the
+    /// extents stay fixed for the map's life.
+    pub fn with_limits(
+        projection_revision: BrickProjectionRevision,
+        bricks: usize,
+        pointer_extent: [u32; 3],
+        limits: AtlasLimits,
+    ) -> Result<Self, BrickMapError> {
+        let rows = limits
+            .rows_for(bricks)
+            .ok_or(BrickMapError::TooManyBricks {
+                actual: bricks,
+                maximum: limits.max_bricks(),
+            })?;
+        let maximum = limits.max_texture_dimension_3d;
+        if pointer_extent.iter().any(|axis| *axis > maximum) {
+            return Err(BrickMapError::TextureDimensionExceeded {
+                pointer_extent,
+                maximum,
+            });
+        }
+        Self::capacity_fixed(projection_revision, rows, pointer_extent)
+    }
+
+    /// An empty map of `rows` atlas rows over a fixed pointer volume, its
+    /// limits already checked.
+    fn capacity_fixed(
+        projection_revision: BrickProjectionRevision,
+        rows: u32,
+        pointer_extent: [u32; 3],
+    ) -> Result<Self, BrickMapError> {
         let pointer_len = pointer_extent
             .into_iter()
             .try_fold(1usize, |total, axis| {
                 total.checked_mul(axis as usize).filter(|_| axis > 0)
             })
             .ok_or(BrickMapError::PointerVolumeOverflow { pointer_extent })?;
-        let mut pointers = Vec::new();
-        pointers
-            .try_reserve_exact(pointer_len)
-            .map_err(|_| BrickMapError::AllocationFailed {
-                entries: pointer_len,
-            })?;
-        pointers.resize(pointer_len, 0);
+        let slots = [ATLAS_SLOTS_X, rows, ATLAS_SLOTS_Z];
         let atlas_len = atlas_extent(slots)
             .into_iter()
             .try_fold(1usize, |total, axis| total.checked_mul(axis as usize))
-            .expect("the fixed atlas bounds fit usize");
+            .expect("checked limits keep the atlas under 4 GiB");
         Ok(Self {
             projection_revision,
             origin: [0; 3],
             pointer_extent,
             slots,
-            pointers,
-            atlas: vec![0; atlas_len],
+            pointers: zeroed(pointer_len)?,
+            atlas: zeroed(atlas_len)?,
             key_slots: BTreeMap::new(),
         })
     }
@@ -494,6 +529,16 @@ fn bounds(keys: &[BrickKey]) -> (BrickKey, [u32; 3]) {
 
 fn atlas_extent(slots: [u32; 3]) -> [u32; 3] {
     slots.map(|axis| axis * BRICK_EDGE)
+}
+
+/// A zeroed buffer, refused rather than aborting when it cannot be allocated.
+fn zeroed<T: Clone + Default>(len: usize) -> Result<Vec<T>, BrickMapError> {
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(len)
+        .map_err(|_| BrickMapError::AllocationFailed { entries: len })?;
+    buffer.resize(len, T::default());
+    Ok(buffer)
 }
 
 #[cfg(test)]

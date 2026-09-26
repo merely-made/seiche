@@ -25,6 +25,12 @@ pub enum BrickMapError {
         extent: [u32; 3],
         maximum: [u32; 3],
     },
+    /// A capacity-fixed pointer volume has an axis past the host's largest
+    /// 3D texture edge.
+    TextureDimensionExceeded {
+        pointer_extent: [u32; 3],
+        maximum: u32,
+    },
     /// A changed selection was offered without advancing the projection
     /// revision.
     ProjectionNotAdvanced {
@@ -68,6 +74,15 @@ impl fmt::Display for BrickMapError {
                     "selection bounds {extent:?} exceed the fixed pointer extent {maximum:?}"
                 )
             },
+            Self::TextureDimensionExceeded {
+                pointer_extent,
+                maximum,
+            } => {
+                write!(
+                    formatter,
+                    "pointer volume {pointer_extent:?} exceeds the {maximum}-texel 3D texture edge"
+                )
+            },
             Self::ProjectionNotAdvanced { current, offered } => {
                 write!(
                     formatter,
@@ -75,10 +90,7 @@ impl fmt::Display for BrickMapError {
                 )
             },
             Self::AllocationFailed { entries } => {
-                write!(
-                    formatter,
-                    "pointer volume could not allocate {entries} entries"
-                )
+                write!(formatter, "brick map could not allocate {entries} entries")
             },
             Self::UnknownKey { key } => write!(formatter, "brick key is not selected: {key:?}"),
             Self::MissingBrick { key } => write!(formatter, "selected brick is missing: {key:?}"),
