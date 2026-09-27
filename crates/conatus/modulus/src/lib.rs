@@ -37,6 +37,13 @@ pub const MAX_BRICKS: usize = AtlasLimits::DEFAULT.max_bricks();
 /// product shader supplies rays and passes its [`BrickTraceSpace`] plus its own
 /// far cut to `brick_dda`. The module contains no camera, lighting, material,
 /// body, or composition policy.
+///
+/// `brick_dda` times each voxel boundary afresh from the eye, as
+/// `(boundary - eye) / direction` in f32, never by adding `1 / |direction|`
+/// per step. Its rounding therefore does not grow along the walk, and a
+/// voxel's next step does not depend on where the walk entered the pointer
+/// box. A CPU mirror that picks what the shader draws must time its crossings
+/// the same way.
 pub const BRICK_DDA_WGSL: &str = include_str!("brick_dda.wgsl");
 
 pub type BrickKey = [i16; 3];

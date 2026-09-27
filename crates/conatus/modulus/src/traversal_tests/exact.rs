@@ -80,17 +80,27 @@ pub(super) fn exact(
     let start_t = enter.max(0.0) + 1e-4;
     let start = [0, 1, 2].map(|i| o[i] + d[i] * start_t);
     let mut voxel = start.map(|v| v.floor() as i32);
-    // The start voxel is a floor of rounded coordinates, except along the
-    // axis the ray entered by: a start rounded back onto that face is
-    // stepped off it at once, so only the other axes can choose wrongly.
-    for i in (0..3).filter(|i| Some(*i) != entry) {
+    // The start voxel is a floor of rounded coordinates. Along the axis the
+    // ray entered by, the start lies the offset's 1e-4 inside the face, which
+    // f32 loses once the entry is past a thousand or so: the walk then
+    // starts on the face's far side and steps in through it. That walk
+    // reaches the same voxels, so it matters only to a hit in the start
+    // voxel, which reports the face it stepped through instead of the
+    // default normal.
+    let mut entry_margin = f64::INFINITY;
+    for i in 0..3 {
         let scale = o[i].abs().max(start[i].abs()).max((d[i] * start_t).abs());
-        margin = margin.min((start[i] - start[i].round()).abs() / ulp32(scale));
+        let near = (start[i] - start[i].round()).abs() / ulp32(scale);
+        if Some(i) == entry {
+            entry_margin = near;
+        } else {
+            margin = margin.min(near);
+        }
     }
     let step = d.map(|v| if v >= 0.0 { 1 } else { -1 });
     let mut t = start_t;
     let mut normal = [0.0, 1.0, 0.0];
-    for _ in 0..1024 {
+    for taken in 0..1024 {
         let found = material(voxel);
         if found != 0 {
             let hit = Hit {
@@ -101,7 +111,11 @@ pub(super) fn exact(
             };
             return Exact {
                 hit: Some(hit),
-                margin,
+                margin: if taken == 0 {
+                    margin.min(entry_margin)
+                } else {
+                    margin
+                },
                 exhausted: false,
             };
         }

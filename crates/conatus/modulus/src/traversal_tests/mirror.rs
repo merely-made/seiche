@@ -10,6 +10,18 @@
 
 use super::*;
 
+/// How a walk times the voxel boundaries it crosses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Crossings {
+    /// The shader's: each crossing taken afresh from the eye.
+    Direct,
+    /// The shader's until 2026-09-27: the first crossing measured from the
+    /// start point, and each later one the last plus `1 / |direction|`, so
+    /// the rounding of every addition stays in the walk. The instrument's
+    /// positive control.
+    Accumulated,
+}
+
 /// What `brick_dda` returns, plus the voxel it stopped in.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Hit {
@@ -66,9 +78,21 @@ pub(super) fn brick_ray_box(
     [enter, exit]
 }
 
-/// `brick_initial_crossing`: the first boundary crossing on one axis,
-/// measured from the start point and offset by its distance.
-fn brick_initial_crossing(position: f32, direction: f32, voxel: i32, start_t: f32) -> f32 {
+/// `brick_crossing`: when the ray leaves `voxel` along one axis, measured
+/// from the eye.
+fn brick_crossing(origin: f32, direction: f32, voxel: i32) -> f32 {
+    if direction > 1e-6 {
+        return ((voxel + 1) as f32 - origin) / direction;
+    }
+    if direction < -1e-6 {
+        return (voxel as f32 - origin) / direction;
+    }
+    1e30
+}
+
+/// The accumulated walk's first crossing: measured from the start point
+/// and offset by the start's distance.
+fn initial_crossing(position: f32, direction: f32, voxel: i32, start_t: f32) -> f32 {
     if direction > 1e-6 {
         return start_t + ((voxel + 1) as f32 - position) / direction;
     }
@@ -78,12 +102,14 @@ fn brick_initial_crossing(position: f32, direction: f32, voxel: i32, start_t: f3
     1e30
 }
 
-/// `brick_dda`, over whatever `material` reads for a voxel.
+/// `brick_dda`, over whatever `material` reads for a voxel, timing its
+/// crossings as `crossings` says.
 pub(super) fn brick_dda(
     space: &BrickTraceSpace,
     far: f32,
     eye: [f32; 3],
     direction: [f32; 3],
+    crossings: Crossings,
     material: impl Fn([i32; 3]) -> u8,
 ) -> Option<Hit> {
     let [enter, exit] = brick_ray_box(space, far, eye, direction);
@@ -94,8 +120,10 @@ pub(super) fn brick_dda(
     let start = [0, 1, 2].map(|i| eye[i] + direction[i] * start_t);
     let mut voxel = start.map(|v| v.floor() as i32);
     let step = direction.map(|v| if v >= 0.0 { 1 } else { -1 });
-    let mut crossing =
-        [0, 1, 2].map(|i| brick_initial_crossing(start[i], direction[i], voxel[i], start_t));
+    let mut crossing = [0, 1, 2].map(|i| match crossings {
+        Crossings::Direct => brick_crossing(eye[i], direction[i], voxel[i]),
+        Crossings::Accumulated => initial_crossing(start[i], direction[i], voxel[i], start_t),
+    });
     let delta = direction.map(|v| if v.abs() > 1e-6 { 1.0 / v.abs() } else { 1e30 });
     let mut t = start_t;
     let mut normal = [0.0, 1.0, 0.0];
@@ -117,8 +145,11 @@ pub(super) fn brick_dda(
             2
         };
         t = crossing[axis];
-        crossing[axis] += delta[axis];
         voxel[axis] += step[axis];
+        crossing[axis] = match crossings {
+            Crossings::Direct => brick_crossing(eye[axis], direction[axis], voxel[axis]),
+            Crossings::Accumulated => crossing[axis] + delta[axis],
+        };
         normal = [0.0; 3];
         normal[axis] = -step[axis] as f32;
         if t > exit || t > far {
