@@ -8,8 +8,10 @@
 //! This crate owns one presentation ABI: a three-dimensional pointer volume
 //! whose zero value means air and whose other values select dense 8-cubed
 //! material slots in an R8 atlas. [`BRICK_DDA_WGSL`] traverses that ABI from a
-//! caller-supplied ray. Products still own working-set selection, source
-//! revision, camera construction, material appearance, and final composition.
+//! caller-supplied ray, and [`BrickMap::trace`] walks it the same way on the
+//! CPU, for picks that land on what the shader draws. Products still own
+//! working-set selection, source revision, camera construction, material
+//! appearance, and final composition.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,9 +19,11 @@ use bytemuck::{Pod, Zeroable};
 
 mod error;
 mod limits;
+mod trace;
 
 pub use error::BrickMapError;
 pub use limits::AtlasLimits;
+pub use trace::{BrickHit, BrickTrace};
 
 pub const BRICK_EDGE: u32 = 8;
 pub const ATLAS_SLOTS_X: u32 = 16;
@@ -42,8 +46,8 @@ pub const MAX_BRICKS: usize = AtlasLimits::DEFAULT.max_bricks();
 /// `(boundary - eye) / direction` in f32, never by adding `1 / |direction|`
 /// per step. Its rounding therefore does not grow along the walk, and a
 /// voxel's next step does not depend on where the walk entered the pointer
-/// box. A CPU mirror that picks what the shader draws must time its crossings
-/// the same way.
+/// box. [`BrickMap::trace`] is the same walk on the CPU; a pick should call
+/// it rather than keep its own copy.
 pub const BRICK_DDA_WGSL: &str = include_str!("brick_dda.wgsl");
 
 pub type BrickKey = [i16; 3];

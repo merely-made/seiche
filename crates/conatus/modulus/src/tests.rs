@@ -6,10 +6,10 @@
 //! Unit tests for the brick map and its shared shader. Split out of
 //! `lib.rs` to keep both files under the workspace's per-file size ceiling.
 //! What the shader reads for a voxel is its CPU mirror's
-//! `brick_material_at`, in `traversal_tests`.
+//! `brick_material_at`, beside `BrickMap::trace` in `trace.rs`.
 
 use super::*;
-use crate::traversal_tests::brick_material_at;
+use crate::trace::brick_material_at;
 
 fn solid(material: u8) -> [u8; BRICK_EDGE.pow(3) as usize] {
     [material; BRICK_EDGE.pow(3) as usize]

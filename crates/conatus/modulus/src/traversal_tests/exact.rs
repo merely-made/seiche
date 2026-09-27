@@ -19,7 +19,7 @@ use super::*;
 
 /// Where the exact walk stopped, and how close it came to stopping elsewhere.
 pub(super) struct Exact {
-    pub(super) hit: Option<Hit>,
+    pub(super) hit: Option<BrickHit>,
     /// The closest call, in f32 ulps; infinite for a walk that chose nothing.
     pub(super) margin: f64,
     /// Whether the 1,024-cell budget ran out first.
@@ -103,7 +103,7 @@ pub(super) fn exact(
     for taken in 0..1024 {
         let found = material(voxel);
         if found != 0 {
-            let hit = Hit {
+            let hit = BrickHit {
                 voxel,
                 material: found,
                 t: t as f32,

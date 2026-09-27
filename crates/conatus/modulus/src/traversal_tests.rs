@@ -5,27 +5,28 @@
 
 //! The shared traversal measured against an exact walk of the same rays.
 //!
-//! [`mirror`] is `brick_dda.wgsl` in f32 on the CPU, beside the walk it
-//! replaced on 2026-09-27, which added `1 / |direction|` to each crossing
-//! per step and is kept as the positive control; [`exact`] walks the same
-//! f32 ray in f64 with every crossing taken afresh from the eye, and records
-//! how near each ray came to a tie. The rays are Isometry's board frame (its
-//! probe's camera, rebuilt bit for bit, over the probe's box with zero to
-//! two spare layers of headroom) and a seeded spread of boxes and rays from
-//! near the origin to 240,000 voxels out.
+//! [`BrickMap::trace`] is `brick_dda.wgsl` in f32 on the CPU. Beside it,
+//! [`accumulated`] is the walk the shader replaced on 2026-09-27, which
+//! added `1 / |direction|` to each crossing per step, kept as the positive
+//! control; [`exact`] walks the same f32 ray in f64 with every crossing
+//! taken afresh from the eye, and records how near each ray came to a tie.
+//! The rays are Isometry's board frame (its probe's camera, rebuilt bit for
+//! bit, over the probe's box with zero to two spare layers of headroom) and
+//! a seeded spread of boxes and rays from near the origin to 240,000 voxels
+//! out.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use super::*;
+use crate::trace::brick_material_at;
 
+mod accumulated;
 mod exact;
-mod mirror;
 mod scenes;
 
+use accumulated::accumulated;
 use exact::{Exact, exact};
-pub(crate) use mirror::brick_material_at;
-use mirror::{Crossings, Hit, brick_dda};
 use scenes::{
     BOARD_FAR, Ray, TEXTURE, board_frame, board_map, board_ray, board_sample, stress_scenes,
 };
@@ -40,7 +41,7 @@ const TIE: f64 = 3.0;
 const BANDS: [f64; 6] = [1.0, 2.0, 3.0, 4.0, 8.0, 16.0];
 
 /// What a pixel shows: the voxel, its material and the face entered by.
-fn landing(hit: Option<Hit>) -> Option<([i32; 3], u8, [f32; 3])> {
+fn landing(hit: Option<BrickHit>) -> Option<([i32; 3], u8, [f32; 3])> {
     hit.map(|hit| (hit.voxel, hit.material, hit.normal))
 }
 
@@ -61,7 +62,7 @@ struct Tally {
 }
 
 impl Tally {
-    fn add(&mut self, walked: Option<Hit>, truth: &Exact) {
+    fn add(&mut self, walked: Option<BrickHit>, truth: &Exact) {
         self.rays += 1;
         if truth.exhausted {
             self.exhausted += 1;
@@ -77,19 +78,30 @@ impl Tally {
     }
 }
 
+/// Which walk a tally reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Walk {
+    /// [`BrickMap::trace`], the shader's walk.
+    Shader,
+    /// [`accumulated`], the positive control.
+    Accumulated,
+}
+
 /// One ray walked three ways: by the shader, by the accumulated walk it
 /// replaced, and exactly.
 struct Walked {
-    direct: Option<Hit>,
-    accumulated: Option<Hit>,
+    shader: BrickTrace,
+    accumulated: Option<BrickHit>,
     exact: Exact,
 }
 
 impl Walked {
-    fn by(&self, crossings: Crossings) -> Option<Hit> {
-        match crossings {
-            Crossings::Direct => self.direct,
-            Crossings::Accumulated => self.accumulated,
+    /// What the pixel shows by `walk`; a spent budget draws as a miss.
+    fn by(&self, walk: Walk) -> Option<BrickHit> {
+        match (walk, self.shader) {
+            (Walk::Shader, BrickTrace::Hit(hit)) => Some(hit),
+            (Walk::Shader, _) => None,
+            (Walk::Accumulated, _) => self.accumulated,
         }
     }
 }
@@ -100,15 +112,8 @@ fn walks(map: &BrickMap, far: f32, rays: &[Ray]) -> Vec<Walked> {
     let material = |voxel| brick_material_at(map, voxel);
     rays.iter()
         .map(|&(eye, direction)| Walked {
-            direct: brick_dda(&space, far, eye, direction, Crossings::Direct, material),
-            accumulated: brick_dda(
-                &space,
-                far,
-                eye,
-                direction,
-                Crossings::Accumulated,
-                material,
-            ),
+            shader: map.trace(eye, direction, far),
+            accumulated: accumulated(map, far, eye, direction),
             exact: exact(&space, far, eye, direction, material),
         })
         .collect()
@@ -135,17 +140,17 @@ fn spread() -> Vec<Walked> {
 }
 
 /// How many rays one walk lands differently under two headrooms.
-fn moved(a: &[Walked], b: &[Walked], crossings: Crossings) -> usize {
+fn moved(a: &[Walked], b: &[Walked], walk: Walk) -> usize {
     a.iter()
         .zip(b)
-        .filter(|(a, b)| landing(a.by(crossings)) != landing(b.by(crossings)))
+        .filter(|(a, b)| landing(a.by(walk)) != landing(b.by(walk)))
         .count()
 }
 
-fn tally(walked: &[Walked], crossings: Crossings) -> Tally {
+fn tally(walked: &[Walked], walk: Walk) -> Tally {
     let mut tally = Tally::default();
     for ray in walked {
-        tally.add(ray.by(crossings), &ray.exact);
+        tally.add(ray.by(walk), &ray.exact);
     }
     tally
 }
@@ -200,12 +205,11 @@ fn the_probe_s_texel_lands_on_the_exact_voxel_at_any_headroom() {
     // the box.
     let exact_voxel = Some([-619, 1, -640]);
     let walked = board(&[(445, 153)]);
-    let voxel =
-        |headroom: usize, crossings| walked[headroom][0].by(crossings).map(|hit: Hit| hit.voxel);
-    assert_eq!(voxel(0, Crossings::Accumulated), exact_voxel);
-    assert_eq!(voxel(1, Crossings::Accumulated), Some([-620, 1, -640]));
+    let voxel = |headroom: usize, walk| walked[headroom][0].by(walk).map(|hit| hit.voxel);
+    assert_eq!(voxel(0, Walk::Accumulated), exact_voxel);
+    assert_eq!(voxel(1, Walk::Accumulated), Some([-620, 1, -640]));
     for (headroom, walked) in walked.iter().enumerate() {
-        assert_eq!(voxel(headroom, Crossings::Direct), exact_voxel);
+        assert_eq!(voxel(headroom, Walk::Shader), exact_voxel);
         assert_eq!(walked[0].exact.hit.map(|hit| hit.voxel), exact_voxel);
     }
 }
@@ -215,12 +219,12 @@ fn headroom_no_longer_moves_a_texel() {
     let [zero, one, two] = sampled();
     // The positive control: the accumulated walk moves the probe's own 330
     // texels at one spare layer and 660 at two.
-    let control = Crossings::Accumulated;
+    let control = Walk::Accumulated;
     assert_eq!(
         (moved(zero, one, control), moved(zero, two, control)),
         (330, 660)
     );
-    let shader = Crossings::Direct;
+    let shader = Walk::Shader;
     assert_eq!((moved(zero, one, shader), moved(zero, two, shader)), (0, 0));
 }
 
@@ -228,22 +232,26 @@ fn headroom_no_longer_moves_a_texel() {
 fn the_shader_s_walk_leaves_the_exact_walk_only_at_ties() {
     let [zero, one, two] = sampled();
     let spread = spread();
-    for crossings in [Crossings::Accumulated, Crossings::Direct] {
+    for walk in [Walk::Accumulated, Walk::Shader] {
         println!(
-            "{crossings:?}\n board headroom 0: {:?}\n board headroom 1: {:?}\n \
+            "{walk:?}\n board headroom 0: {:?}\n board headroom 1: {:?}\n \
              board headroom 2: {:?}\n spread: {:?}",
-            tally(zero, crossings),
-            tally(one, crossings),
-            tally(two, crossings),
-            tally(&spread, crossings),
+            tally(zero, walk),
+            tally(one, walk),
+            tally(two, walk),
+            tally(&spread, walk),
         );
     }
-    let control = Crossings::Accumulated;
+    let control = Walk::Accumulated;
     assert!(tally(one, control).faults > tally(zero, control).faults);
     assert!(tally(&spread, control).faults > 0, "the control drifts");
     for walked in [zero, one, two, &spread] {
-        let shader = tally(walked, Crossings::Direct);
+        let shader = tally(walked, Walk::Shader);
         assert_eq!((shader.faults, shader.exhausted), (0, 0), "{shader:?}");
+        for ray in walked {
+            let spent = matches!(ray.shader, BrickTrace::Exhausted);
+            assert_eq!(spent, ray.exact.exhausted);
+        }
     }
 }
 
@@ -261,22 +269,19 @@ fn receipt() {
                 .collect()
         })
         .collect();
-    for crossings in [Crossings::Accumulated, Crossings::Direct] {
+    for walk in [Walk::Accumulated, Walk::Shader] {
         println!(
-            "{crossings:?}, board frame of {} texels\n headroom 0: {:?}\n headroom 1: {:?}\n \
+            "{walk:?}, board frame of {} texels\n headroom 0: {:?}\n headroom 1: {:?}\n \
              headroom 2: {:?}\n moved by headroom 1: {}, by headroom 2: {}",
             zero.len(),
-            tally(&zero, crossings),
-            tally(&one, crossings),
-            tally(&two, crossings),
-            moved(&zero, &one, crossings),
-            moved(&zero, &two, crossings),
+            tally(&zero, walk),
+            tally(&one, walk),
+            tally(&two, walk),
+            moved(&zero, &one, walk),
+            moved(&zero, &two, walk),
         );
         for (reach, walked) in bands.iter().enumerate() {
-            println!(
-                " spread, reach band {reach}: {:?}",
-                tally(walked, crossings)
-            );
+            println!(" spread, reach band {reach}: {:?}", tally(walked, walk));
         }
     }
 }
