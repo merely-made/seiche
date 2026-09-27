@@ -128,7 +128,7 @@ fn burn_and_raw_views_are_the_same_cubecl_allocation() {
         .expect("resident tensor is a wgpu tensor");
     let managed = primitive
         .client
-        .get_resource(primitive.handle.clone())
+        .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(primitive.handle.clone())
         .unwrap();
     let resource = managed.resource();
     assert_eq!(&resource.buffer, raw.allocation().buffer());
