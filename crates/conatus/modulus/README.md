@@ -28,7 +28,12 @@ What this crate owns:
 - **`BrickTraceSpace`** — the exact uniform fields the shader consumes.
 - **`BRICK_DDA_WGSL`** — pointer lookup, ray-box clipping, and voxel DDA
   from a caller-supplied ray. No camera, lighting, material, body, or
-  composition policy; the shader stops where product policy begins.
+  composition policy; the shader stops where product policy begins. Since
+  2026-09-27 it takes each voxel crossing afresh from the eye rather than
+  adding a step to the last one, so its f32 rounding does not grow along
+  the walk and where a walk lands does not depend on where it entered the
+  pointer volume. `src/traversal_tests.rs` measures it against an exact
+  f64 walk over Isometry's board frame and a seeded spread.
 - **`BrickProjectionRevision`** — disposable presentation identity the
   working-set owner advances when selection or slot assignment changes.
 
