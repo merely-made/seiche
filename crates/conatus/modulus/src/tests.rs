@@ -5,8 +5,11 @@
 
 //! Unit tests for the brick map and its shared shader. Split out of
 //! `lib.rs` to keep both files under the workspace's per-file size ceiling.
+//! What the shader reads for a voxel is its CPU mirror's
+//! `brick_material_at`, in `traversal_tests`.
 
 use super::*;
+use crate::traversal_tests::brick_material_at;
 
 fn solid(material: u8) -> [u8; BRICK_EDGE.pow(3) as usize] {
     [material; BRICK_EDGE.pow(3) as usize]
@@ -263,25 +266,6 @@ fn shrunk_cases() -> [Shrunk; 2] {
     ]
 }
 
-/// What the shared shader's `brick_material_at` reads: the pointer volume,
-/// then that slot's atlas box, with none of the map's key bookkeeping.
-fn traced_material_at(map: &BrickMap, at: [i32; 3]) -> u8 {
-    let edge = BRICK_EDGE as i32;
-    let local = [0, 1, 2].map(|axis| at[axis] - i32::from(map.origin()[axis]) * edge);
-    if local.iter().any(|axis| *axis < 0) {
-        return 0;
-    }
-    let slot = map.pointer_at(local.map(|axis| (axis / edge) as u32));
-    let Some(index) = slot.and_then(|slot| slot.checked_sub(1)) else {
-        return 0;
-    };
-    let [sx, _, sz] = map.slots();
-    let spot = [index % sx, index / (sx * sz), (index / sx) % sz];
-    let texel = [0, 1, 2].map(|axis| spot[axis] * BRICK_EDGE + (local[axis] % edge) as u32);
-    let [width, height, _] = map.atlas_extent();
-    map.atlas()[((texel[2] * height + texel[1]) * width + texel[0]) as usize]
-}
-
 /// The first solid voxel straight down one column: the simplest pick ray.
 fn first_solid_down(read: impl Fn([i32; 3]) -> u8, x: i32, z: i32) -> Option<(i32, u8)> {
     (0..2 * BRICK_EDGE as i32).rev().find_map(|y| {
@@ -324,7 +308,7 @@ fn a_pick_after_a_shrink_meets_the_ground_the_tracer_draws() {
     } in shrunk_cases()
     {
         let [x, _, z] = voxel_origin(kept);
-        let drawn = first_solid_down(|at| traced_material_at(&map, at), x + 4, z + 3);
+        let drawn = first_solid_down(|at| brick_material_at(&map, at), x + 4, z + 3);
         assert_eq!(
             drawn,
             Some((7, material)),
@@ -342,7 +326,7 @@ fn a_pick_after_a_shrink_meets_the_ground_the_tracer_draws() {
             for y in 0..edge {
                 for dz in -2 * edge..3 * edge {
                     let at = [x + dx, y, z + dz];
-                    assert_eq!(map.material_at(at), traced_material_at(&map, at), "{at:?}");
+                    assert_eq!(map.material_at(at), brick_material_at(&map, at), "{at:?}");
                 }
             }
         }
@@ -430,7 +414,7 @@ fn a_card_sized_map_holds_more_than_the_default_cap() {
         let low = voxel_origin(*key);
         for at in [low, low.map(|axis| axis + BRICK_EDGE as i32 - 1)] {
             assert_eq!(map.material_at(at), brick[0], "{key:?}");
-            assert_eq!(traced_material_at(&map, at), brick[0], "{key:?}");
+            assert_eq!(brick_material_at(&map, at), brick[0], "{key:?}");
         }
     }
 }

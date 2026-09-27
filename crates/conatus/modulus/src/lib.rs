@@ -543,3 +543,5 @@ fn zeroed<T: Clone + Default>(len: usize) -> Result<Vec<T>, BrickMapError> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod traversal_tests;
