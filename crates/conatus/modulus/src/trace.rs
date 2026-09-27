@@ -52,15 +52,23 @@ impl BrickMap {
     /// unit length, `t` and `far` are in its units, and nothing is checked.
     /// Each voxel crossing is measured afresh from `eye`, so the rounding
     /// does not grow along the walk and a voxel's next step does not depend
-    /// on where the walk entered the pointer volume.
+    /// on where the walk entered the pointer volume. The walk starts 1e-4
+    /// past the entry, in a first voxel clamped into the volume, since far
+    /// from the eye f32 cannot hold that offset; a path through the volume
+    /// shorter than the offset is [`BrickTrace::Clear`].
     pub fn trace(&self, eye: [f32; 3], direction: [f32; 3], far: f32) -> BrickTrace {
         let space = BrickTraceSpace::from_map(self);
         let [enter, exit] = brick_ray_box(&space, far, eye, direction);
-        if enter > exit || exit < 0.0 {
+        let start_t = enter.max(0.0) + 0.0001;
+        if enter > exit || start_t > exit {
             return BrickTrace::Clear;
         }
-        let start_t = enter.max(0.0) + 0.0001;
-        let mut voxel = [0, 1, 2].map(|i| (eye[i] + direction[i] * start_t).floor() as i32);
+        let low = [0, 1, 2].map(|i| space.world_min[i] as i32);
+        let high = [0, 1, 2].map(|i| low[i] + space.pointer_extent[i] as i32 * 8 - 1);
+        let mut voxel = [0, 1, 2].map(|i| {
+            let floor = (eye[i] + direction[i] * start_t).floor() as i32;
+            floor.max(low[i]).min(high[i])
+        });
         let step = direction.map(|v| if v >= 0.0 { 1 } else { -1 });
         let mut crossing = [0, 1, 2].map(|i| brick_crossing(eye[i], direction[i], voxel[i]));
         let mut t = start_t;

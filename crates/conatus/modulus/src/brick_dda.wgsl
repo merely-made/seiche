@@ -98,11 +98,18 @@ fn brick_dda(
     direction: vec3<f32>,
 ) -> BrickHit {
     let interval = brick_ray_box(space, far, eye, direction);
-    if (interval.x > interval.y || interval.y < 0.0) {
+    let start_t = max(interval.x, 0.0) + 0.0001;
+    if (interval.x > interval.y || start_t > interval.y) {
         return BrickHit(0u, far, vec3(0.0, 1.0, 0.0), false);
     }
-    let start_t = max(interval.x, 0.0) + 0.0001;
-    var voxel = vec3<i32>(floor(eye + direction * start_t));
+    // The walk starts the offset past where the ray enters. Far from the
+    // eye that offset is below f32's resolution and the start can round
+    // onto or past the entry face, so the first voxel is clamped into the
+    // pointer volume; a ray whose path through it is shorter than the
+    // offset has missed it.
+    let low = vec3<i32>(space.world_min.xyz);
+    let high = low + vec3<i32>(space.pointer_extent.xyz) * 8 - vec3(1);
+    var voxel = clamp(vec3<i32>(floor(eye + direction * start_t)), low, high);
     let step = vec3<i32>(
         select(-1, 1, direction.x >= 0.0),
         select(-1, 1, direction.y >= 0.0),

@@ -46,8 +46,11 @@ pub const MAX_BRICKS: usize = AtlasLimits::DEFAULT.max_bricks();
 /// `(boundary - eye) / direction` in f32, never by adding `1 / |direction|`
 /// per step. Its rounding therefore does not grow along the walk, and a
 /// voxel's next step does not depend on where the walk entered the pointer
-/// box. [`BrickMap::trace`] is the same walk on the CPU; a pick should call
-/// it rather than keep its own copy.
+/// box. It starts 1e-4 past where the ray enters the box, in a first voxel
+/// clamped inside it, since far from the eye f32 cannot hold that offset,
+/// and a path through the box shorter than the offset is a miss.
+/// [`BrickMap::trace`] is the same walk on the CPU; a pick should call it
+/// rather than keep its own copy.
 pub const BRICK_DDA_WGSL: &str = include_str!("brick_dda.wgsl");
 
 pub type BrickKey = [i16; 3];

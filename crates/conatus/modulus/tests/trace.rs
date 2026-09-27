@@ -160,3 +160,38 @@ fn raising_the_volume_s_top_moves_no_hit() {
     }
     assert_eq!(landed, 64 * 64);
 }
+
+#[test]
+fn a_path_through_the_volume_shorter_than_the_start_offset_is_clear() {
+    // A solid brick, and rays down and across its top edge at x = 8: one
+    // cuts the corner for 7e-5, less than the walk's 1e-4 start offset,
+    // and misses; one cuts it for 0.35 and hits the corner voxel. Clamping
+    // the first voxel into the volume would otherwise turn the first into
+    // a hit.
+    let map = map(&[[0, 0, 0]], [1, 1, 1], |_| 5);
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let across = |inset: f32| map.trace([-2.0 - inset, 18.0, 4.5], [half, -half, 0.0], 100.0);
+    assert_eq!(across(5e-5), BrickTrace::Clear);
+    let found = hit(across(0.25));
+    assert_eq!((found.voxel, found.material), ([7, 7, 4], 5));
+}
+
+#[test]
+fn a_far_entry_through_a_side_face_starts_inside_the_volume() {
+    // An eye 5,000 units off along x enters the brick's x = 8 face at
+    // t = 4,992, where f32 cannot hold the 1e-4 start offset, so the start
+    // point lands on the face itself. The first voxel is clamped back
+    // inside: the hit is that voxel with the default normal, as the exact
+    // walk has it, rather than a step in through the face.
+    let map = map(&[[0, 0, 0]], [1, 1, 1], |_| 6);
+    let (eye, direction) = ([5_000.0f32, 4.5, 3.5], [-1.0f32, 0.0, 0.0]);
+    let start_t = 4_992.0f32 + 0.0001;
+    assert_eq!(start_t, 4_992.0, "f32 loses the offset here");
+    assert_eq!(
+        (eye[0] + direction[0] * start_t).floor(),
+        8.0,
+        "unclamped, the walk would start outside the volume"
+    );
+    let found = hit(map.trace(eye, direction, 10_000.0));
+    assert_eq!((found.voxel, found.normal), ([7, 4, 3], [0.0, 1.0, 0.0]));
+}

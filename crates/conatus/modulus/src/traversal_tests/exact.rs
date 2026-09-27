@@ -6,8 +6,9 @@
 //! The exact walk the f32 traversal is measured against: the same f32 eye,
 //! direction, box and far cut taken as exact values, every crossing computed
 //! afresh from the eye in f64, and the shader's own rules kept (its 1e-4
-//! start offset, its 1e-6 parallel threshold, its x-then-y-then-z tie order
-//! and its 1,024-cell budget), so that only rounding separates the two.
+//! start offset, a path through the box shorter than it being a miss, its
+//! 1e-6 parallel threshold, its x-then-y-then-z tie order and its 1,024-cell
+//! budget), so that only rounding separates the two.
 //!
 //! Each walk also records its closest call: of every choice an f32 walk of
 //! this ray has to make, how near it came to going the other way, in f32
@@ -77,30 +78,27 @@ pub(super) fn exact(
     if enter > exit || exit < 0.0 {
         return miss(margin.min(apart(exit, 0.0)));
     }
+    // A path through the box shorter than the start offset is a miss.
     let start_t = enter.max(0.0) + 1e-4;
+    margin = margin.min(apart(start_t, exit));
+    if start_t > exit {
+        return miss(margin);
+    }
     let start = [0, 1, 2].map(|i| o[i] + d[i] * start_t);
     let mut voxel = start.map(|v| v.floor() as i32);
     // The start voxel is a floor of rounded coordinates. Along the axis the
-    // ray entered by, the start lies the offset's 1e-4 inside the face, which
-    // f32 loses once the entry is past a thousand or so: the walk then
-    // starts on the face's far side and steps in through it. That walk
-    // reaches the same voxels, so it matters only to a hit in the start
-    // voxel, which reports the face it stepped through instead of the
-    // default normal.
-    let mut entry_margin = f64::INFINITY;
-    for i in 0..3 {
+    // ray entered by, the start lies the offset inside the entry face, and
+    // the walk clamps its first voxel into the pointer volume however f32
+    // rounds the offset; along the others it can round either way near a
+    // boundary.
+    for i in (0..3).filter(|i| Some(*i) != entry) {
         let scale = o[i].abs().max(start[i].abs()).max((d[i] * start_t).abs());
-        let near = (start[i] - start[i].round()).abs() / ulp32(scale);
-        if Some(i) == entry {
-            entry_margin = near;
-        } else {
-            margin = margin.min(near);
-        }
+        margin = margin.min((start[i] - start[i].round()).abs() / ulp32(scale));
     }
     let step = d.map(|v| if v >= 0.0 { 1 } else { -1 });
     let mut t = start_t;
     let mut normal = [0.0, 1.0, 0.0];
-    for taken in 0..1024 {
+    for _ in 0..1024 {
         let found = material(voxel);
         if found != 0 {
             let hit = BrickHit {
@@ -111,11 +109,7 @@ pub(super) fn exact(
             };
             return Exact {
                 hit: Some(hit),
-                margin: if taken == 0 {
-                    margin.min(entry_margin)
-                } else {
-                    margin
-                },
+                margin,
                 exhausted: false,
             };
         }
