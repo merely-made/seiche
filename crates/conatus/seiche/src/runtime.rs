@@ -48,6 +48,9 @@ use crate::{
 /// in ticks reads directly as seconds.
 pub const TICK_DT: f32 = 1.0 / 60.0;
 
+#[cfg(test)]
+mod pause_tests;
+
 /// A command the host sends to the physics actor. Mirrors the mutating surface
 /// of [`Simulation`] plus the settle/drag drivers; all payloads are `Send`
 /// (positions and node keys), so the graph itself never crosses the boundary.
@@ -59,13 +62,17 @@ pub enum PhysicsCommand {
     SyncEdges(Vec<(NodeKey, NodeKey)>),
     /// Override the positions of existing bodies (a seed / reseed).
     Seed(Vec<(NodeKey, Point2D<f32>)>),
+    /// Acknowledge all preceding commands in subsequent snapshots. The host
+    /// uses this epoch to reject layouts produced before its latest reseed.
+    Barrier(u64),
     /// Pin a node to a world position (a drag in progress).
     Pin(NodeKey, Point2D<f32>),
     /// Release a pinned node back to dynamic.
     Unpin(NodeKey),
     /// Extend the settle budget to at least `n` ticks.
     Settle(u32),
-    /// Stop settling now (a restored session that must not re-scramble).
+    /// Stop all current stepping, including perpetual scenes and dragging.
+    /// A later positive Settle resumes; a new drag ticks only while held.
     Halt,
     /// Whether a drag is in progress (keep ticking so neighbors react).
     SetDragging(bool),
@@ -124,6 +131,7 @@ pub enum PhysicsCommand {
 pub struct PhysicsUpdate {
     pub snapshot: LayoutSnapshot,
     pub settling: bool,
+    pub command_epoch: u64,
 }
 
 /// The in-thread backend: the simulation plus the settle/drag state the frame
@@ -133,6 +141,7 @@ pub struct InlinePhysics {
     ticks_remaining: u32,
     dragging: bool,
     generation: u64,
+    halted: bool,
 }
 
 /// The off-thread backend: the actor handle, its update channel, and the last
@@ -144,6 +153,33 @@ pub struct ActorPhysics {
     settling: bool,
     /// The kinetic energy the last folded snapshot carried.
     energy: f32,
+    command_epoch: u64,
+}
+
+#[cfg(feature = "actor")]
+impl ActorPhysics {
+    fn barrier(&mut self) {
+        self.command_epoch = self
+            .command_epoch
+            .checked_add(1)
+            .expect("physics epoch exhausted");
+        self.handle
+            .command(PhysicsCommand::Barrier(self.command_epoch));
+    }
+
+    fn latest(&mut self) -> Option<PhysicsUpdate> {
+        let mut latest = None;
+        while let Ok(update) = self.updates.try_recv() {
+            if update.command_epoch >= self.command_epoch {
+                latest = Some(update);
+            }
+        }
+        latest
+    }
+}
+
+fn should_tick(sim: &Simulation, ticks: u32, dragging: bool, halted: bool) -> bool {
+    dragging || (!halted && (ticks > 0 || sim.wants_continuous_tick()))
 }
 
 /// The physics backend a host talks to. Inline by default (tests +
@@ -162,6 +198,7 @@ impl Physics {
             ticks_remaining: initial_settle,
             dragging: false,
             generation: 0,
+            halted: false,
         })
     }
 
@@ -179,14 +216,17 @@ impl Physics {
         let sim = std::mem::replace(&mut inline.sim, Simulation::new());
         let initial_settle = inline.ticks_remaining;
         let dragging = inline.dragging;
+        let halted = inline.halted;
+        let settling = should_tick(&sim, initial_settle, dragging, halted);
         let (handle, updates) = spawn(wake, move |commands, out| {
-            run(sim, initial_settle, dragging, commands, out);
+            run(sim, initial_settle, dragging, halted, commands, out);
         });
         *self = Physics::Actor(ActorPhysics {
             handle,
             updates,
-            settling: initial_settle > 0,
+            settling,
             energy: 0.0,
+            command_epoch: 0,
         });
     }
 
@@ -219,6 +259,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Seed(positions));
+                p.barrier();
             },
         }
     }
@@ -503,22 +544,35 @@ impl Physics {
     /// Extend the settle budget to at least `ticks` (start / prolong a settle).
     pub fn settle(&mut self, ticks: u32) {
         match self {
-            Physics::Inline(p) => p.ticks_remaining = p.ticks_remaining.max(ticks),
+            Physics::Inline(p) => {
+                p.ticks_remaining = p.ticks_remaining.max(ticks);
+                if ticks > 0 {
+                    p.halted = false;
+                }
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Settle(ticks));
-                p.settling = true;
+                if ticks > 0 {
+                    p.settling = true;
+                }
             },
         }
     }
 
-    /// Stop settling immediately (a restored session that must not re-scramble).
+    /// Stop current stepping, including perpetual scenes. A later positive
+    /// settle resumes; a new drag can temporarily step while held.
     pub fn halt(&mut self) {
         match self {
-            Physics::Inline(p) => p.ticks_remaining = 0,
+            Physics::Inline(p) => {
+                p.ticks_remaining = 0;
+                p.dragging = false;
+                p.halted = true;
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Halt);
+                p.barrier();
                 p.settling = false;
             },
         }
@@ -539,9 +593,7 @@ impl Physics {
     /// Whether the layout is still moving (settle in progress or a node dragged).
     pub fn is_settling(&self) -> bool {
         match self {
-            Physics::Inline(p) => {
-                p.ticks_remaining > 0 || p.dragging || p.sim.wants_continuous_tick()
-            },
+            Physics::Inline(p) => should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted),
             #[cfg(feature = "actor")]
             Physics::Actor(p) => p.settling,
         }
@@ -558,11 +610,7 @@ impl Physics {
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
-                let mut latest = None;
-                while let Ok(update) = p.updates.try_recv() {
-                    latest = Some(update);
-                }
-                if let Some(update) = latest {
+                if let Some(update) = p.latest() {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
@@ -580,7 +628,7 @@ impl Physics {
     pub fn advance_frame(&mut self, view: &mut LayoutView) -> bool {
         match self {
             Physics::Inline(p) => {
-                if p.ticks_remaining > 0 || p.dragging || p.sim.wants_continuous_tick() {
+                if should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted) {
                     p.sim.tick(TICK_DT);
                     if p.ticks_remaining > 0 {
                         p.ticks_remaining -= 1;
@@ -588,20 +636,14 @@ impl Physics {
                 }
                 p.generation = p.generation.wrapping_add(1);
                 view.apply_snapshot(&p.sim.snapshot(p.generation));
-                p.ticks_remaining > 0 || p.dragging || p.sim.wants_continuous_tick()
+                should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted)
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
-                let mut latest = None;
-                loop {
-                    match p.updates.try_recv() {
-                        Ok(update) => latest = Some(update),
-                        Err(_) => break,
-                    }
-                }
-                if let Some(update) = latest {
+                if let Some(update) = p.latest() {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
+                    p.energy = update.snapshot.energy;
                 }
                 p.settling
             },
@@ -617,23 +659,37 @@ fn run(
     mut sim: Simulation,
     initial_settle: u32,
     initial_dragging: bool,
+    initial_halted: bool,
     commands: Receiver<PhysicsCommand>,
     out: Emitter<PhysicsUpdate>,
 ) {
     let mut ticks_remaining = initial_settle;
     let mut dragging = initial_dragging;
+    let mut halted = initial_halted;
+    let mut command_epoch = 0;
     let mut generation: u64 = 0;
     // Pace the active settle at the simulation timestep so it does not run the
     // whole budget in microseconds and burn a core.
     let pacing = Duration::from_secs_f32(TICK_DT);
 
     loop {
+        let mut changed = false;
         // Idle: block for the next command so the thread parks. A closed channel
         // (the host dropped the handle) ends the actor. A perpetual scene (a drifting
         // backdrop) is never idle, so the actor keeps ticking instead of parking.
-        if ticks_remaining == 0 && !dragging && !sim.wants_continuous_tick() {
+        if !should_tick(&sim, ticks_remaining, dragging, halted) {
             match commands.recv() {
-                Ok(cmd) => apply(&mut sim, cmd, &mut ticks_remaining, &mut dragging),
+                Ok(cmd) => {
+                    apply(
+                        &mut sim,
+                        cmd,
+                        &mut ticks_remaining,
+                        &mut dragging,
+                        &mut halted,
+                        &mut command_epoch,
+                    );
+                    changed = true;
+                },
                 Err(_) => return,
             }
         }
@@ -644,7 +700,17 @@ fn run(
         let mut disconnected = false;
         loop {
             match commands.try_recv() {
-                Ok(cmd) => apply(&mut sim, cmd, &mut ticks_remaining, &mut dragging),
+                Ok(cmd) => {
+                    apply(
+                        &mut sim,
+                        cmd,
+                        &mut ticks_remaining,
+                        &mut dragging,
+                        &mut halted,
+                        &mut command_epoch,
+                    );
+                    changed = true;
+                },
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     disconnected = true;
@@ -654,17 +720,24 @@ fn run(
         }
         // Step while there is work (a settle, a drag, or a perpetual scene); emit the new
         // layout and pace the next step.
-        if ticks_remaining > 0 || dragging || sim.wants_continuous_tick() {
+        let stepped = should_tick(&sim, ticks_remaining, dragging, halted);
+        if stepped {
             sim.tick(TICK_DT);
             if ticks_remaining > 0 {
                 ticks_remaining -= 1;
             }
+        }
+        // Seed/Halt must acknowledge their placement even when no tick follows.
+        if stepped || changed {
             generation = generation.wrapping_add(1);
-            let settling = ticks_remaining > 0 || dragging || sim.wants_continuous_tick();
+            let settling = should_tick(&sim, ticks_remaining, dragging, halted);
             out.emit(PhysicsUpdate {
                 snapshot: sim.snapshot(generation),
                 settling,
+                command_epoch,
             });
+        }
+        if stepped {
             std::thread::sleep(pacing);
         }
         // Host gone and the settle budget spent: wind down.
@@ -681,15 +754,27 @@ fn apply(
     cmd: PhysicsCommand,
     ticks_remaining: &mut u32,
     dragging: &mut bool,
+    halted: &mut bool,
+    command_epoch: &mut u64,
 ) {
     match cmd {
         PhysicsCommand::SyncNodes(nodes) => sim.sync_nodes(nodes),
         PhysicsCommand::SyncEdges(edges) => sim.sync_edges(edges),
         PhysicsCommand::Seed(positions) => sim.seed_positions(positions),
+        PhysicsCommand::Barrier(epoch) => *command_epoch = (*command_epoch).max(epoch),
         PhysicsCommand::Pin(node, position) => sim.pin(node, position),
         PhysicsCommand::Unpin(node) => sim.unpin(node),
-        PhysicsCommand::Settle(n) => *ticks_remaining = (*ticks_remaining).max(n),
-        PhysicsCommand::Halt => *ticks_remaining = 0,
+        PhysicsCommand::Settle(n) => {
+            *ticks_remaining = (*ticks_remaining).max(n);
+            if n > 0 {
+                *halted = false;
+            }
+        },
+        PhysicsCommand::Halt => {
+            *ticks_remaining = 0;
+            *dragging = false;
+            *halted = true;
+        },
         PhysicsCommand::SetDragging(d) => *dragging = d,
         PhysicsCommand::SetCouplingForces(forces) => sim.set_coupling_forces(forces),
         PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),
@@ -737,7 +822,9 @@ mod tests {
         let mut sim = Simulation::new();
         sim.add_force(crate::NodeExclusion::default());
         let wake: Wake = Arc::new(|| {});
-        let (handle, updates) = spawn(wake, move |commands, out| run(sim, 0, false, commands, out));
+        let (handle, updates) = spawn(wake, move |commands, out| {
+            run(sim, 0, false, false, commands, out)
+        });
 
         handle.command(PhysicsCommand::SyncNodes(vec![
             (a, Point2D::new(0.0, 0.0)),
