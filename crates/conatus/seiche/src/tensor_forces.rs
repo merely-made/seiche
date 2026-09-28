@@ -429,6 +429,33 @@ mod tests_wgpu {
         )
     }
 
+    fn assert_parity_inputs(a: &[f32], b: &[f32]) {
+        assert_eq!(a.len(), b.len(), "parity output lengths differ");
+        assert!(
+            a.iter().chain(b).all(|value| value.is_finite()),
+            "parity output contains a non-finite value"
+        );
+    }
+
+    #[test]
+    fn parity_inputs_accept_finite_equal_lengths() {
+        assert_parity_inputs(&[0.0, -1.0], &[0.0, 1.0]);
+    }
+
+    #[test]
+    fn parity_inputs_reject_non_finite_values_on_either_side() {
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(std::panic::catch_unwind(|| assert_parity_inputs(&[value], &[0.0])).is_err());
+            assert!(std::panic::catch_unwind(|| assert_parity_inputs(&[0.0], &[value])).is_err());
+        }
+    }
+
+    #[test]
+    fn parity_inputs_reject_unequal_lengths() {
+        assert!(std::panic::catch_unwind(|| assert_parity_inputs(&[0.0], &[])).is_err());
+        assert!(std::panic::catch_unwind(|| assert_parity_inputs(&[], &[0.0])).is_err());
+    }
+
     #[test]
     fn parity_ndarray_wgpu() {
         let (xs, ys) = positions(257);
@@ -439,6 +466,7 @@ mod tests_wgpu {
             &burn::tensor::Device::wgpu(burn::tensor::DeviceKind::DiscreteGpu(0)),
         );
         let max = |a: &[f32], b: &[f32]| {
+            assert_parity_inputs(a, b);
             a.iter()
                 .zip(b)
                 .map(|(x, y)| (x - y).abs())
@@ -464,6 +492,7 @@ mod tests_wgpu {
             &burn::tensor::Device::wgpu(burn::tensor::DeviceKind::DiscreteGpu(0)),
         );
         let max_relative = |a: &[f32], b: &[f32]| {
+            assert_parity_inputs(a, b);
             a.iter()
                 .zip(b)
                 .map(|(x, y)| (x - y).abs() / x.abs().max(y.abs()).max(1.0))
