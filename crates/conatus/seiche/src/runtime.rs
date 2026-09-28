@@ -48,6 +48,9 @@ use crate::{
 /// in ticks reads directly as seconds.
 pub const TICK_DT: f32 = 1.0 / 60.0;
 
+mod elapsed;
+pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
+
 #[cfg(test)]
 mod pause_tests;
 
@@ -142,6 +145,7 @@ pub struct InlinePhysics {
     dragging: bool,
     generation: u64,
     halted: bool,
+    elapsed_remainder: std::time::Duration,
 }
 
 /// The off-thread backend: the actor handle, its update channel, and the last
@@ -199,6 +203,7 @@ impl Physics {
             dragging: false,
             generation: 0,
             halted: false,
+            elapsed_remainder: std::time::Duration::ZERO,
         })
     }
 
@@ -255,7 +260,10 @@ impl Physics {
     /// Override existing bodies' positions (a seed / reseed).
     pub fn seed(&mut self, positions: Vec<(NodeKey, Point2D<f32>)>) {
         match self {
-            Physics::Inline(p) => p.sim.seed_positions(positions),
+            Physics::Inline(p) => {
+                p.sim.seed_positions(positions);
+                p.elapsed_remainder = std::time::Duration::ZERO;
+            },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::Seed(positions));
@@ -568,6 +576,7 @@ impl Physics {
                 p.ticks_remaining = 0;
                 p.dragging = false;
                 p.halted = true;
+                p.elapsed_remainder = std::time::Duration::ZERO;
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
@@ -628,6 +637,9 @@ impl Physics {
     pub fn advance_frame(&mut self, view: &mut LayoutView) -> bool {
         match self {
             Physics::Inline(p) => {
+                // Deterministic callers own their tick count. Do not carry a
+                // fraction from a previous elapsed-time driving mode into it.
+                p.elapsed_remainder = std::time::Duration::ZERO;
                 if should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted) {
                     p.sim.tick(TICK_DT);
                     if p.ticks_remaining > 0 {

@@ -62,6 +62,33 @@ and `view` are private modules, so those types are reachable only as
 
 Writing settled positions back into the host's own graph is the host's job.
 
+## Driving the physics runtime
+
+`Physics::advance_frame` keeps its deterministic one-tick behavior for inline
+callers. The additive `advance_elapsed(view, elapsed, config)` instead accepts
+host-measured `Duration`, runs bounded fixed steps, and publishes one snapshot.
+It does not read a clock or schedule frames. Browser/Canvas callers have not
+switched to it yet.
+
+`ElapsedStepConfig` makes the per-call elapsed cap and step cap configurable;
+defaults are 50 ms and three steps. `ElapsedStepReport` records executed steps,
+discarded time, carried time and whether physics still needs advancement.
+Only a fraction below one step carries forward: excess whole-step debt is
+dropped, including when the step cap is zero. A zero elapsed cap accepts no
+new time. Halted or idle time is discarded in full. These bounds limit catch-up
+work, not the CPU cost of an individual step.
+
+`TICK_DURATION` is the nominal 60 Hz interval rounded to 16,666,667 ns; 60
+intervals are one second plus 20 ns. Integration still uses the existing
+`TICK_DT` value. Consequently a 50 ms contribution alone contains two complete
+rounded intervals and a fraction, rather than exactly three.
+
+`seed`, `halt`, and switching to `advance_frame` clear fractional debt.
+`reset_elapsed` clears it without changing motion or positions. On suspension,
+the host must also reset its timestamp so hidden time never enters the first
+resumed call. Offloaded actors retain their own pacing: `advance_elapsed` only
+drains accepted snapshots and reports zero host-executed steps and durations.
+
 ## Features
 
 `gpu-bench` enables seiche's `tensor-burn-wgpu` path so an ignored benchmark can
