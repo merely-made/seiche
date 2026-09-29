@@ -66,7 +66,10 @@ pub type NodeKey = petgraph::stable_graph::NodeIndex;
 /// instead of owning a frame loop and a settle budget of its own. (Lifted out
 /// of `mere-canvas` 2026-09-04.)
 pub mod runtime;
-pub use runtime::{Physics, PhysicsCommand, PhysicsUpdate, TICK_DT};
+pub use runtime::{
+    ElapsedStepConfig, ElapsedStepReport, Physics, PhysicsCommand, PhysicsUpdate, TICK_DT,
+    TICK_DURATION,
+};
 
 /// Built-in force forces for the force-directed orrery layout.
 pub mod forces;
