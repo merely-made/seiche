@@ -173,7 +173,11 @@ impl Force for CouplingForce {
                 let Some(field) = self.vector() else { return };
                 for (handle, x, y) in samples {
                     let (vx, vy) = eval_vector(field, &self.registry, x, y, 0.0);
-                    if let Some(body) = ctx.bodies.get_mut(handle) {
+                    // A pinned (kinematic) body belongs to the drag; writing
+                    // its translation would overwrite its kinematic target.
+                    if let Some(body) = ctx.bodies.get_mut(handle)
+                        && body.is_dynamic()
+                    {
                         let t = body.translation();
                         let next = t + Vector::new(vx, vy) * (self.strength * dt);
                         body.set_translation(next, true);
@@ -304,6 +308,38 @@ mod tests {
         assert!(
             (sim.position_of(a).unwrap() - p0).length() < 1.0e-3,
             "an open-tail response must apply no force"
+        );
+    }
+
+    #[test]
+    fn flow_advect_leaves_a_pinned_body_at_its_kinematic_target() {
+        // FlowAdvect writes positions; a pinned (kinematic) body belongs to
+        // the drag, so it stays on its target while a free one is advected.
+        let mut g = Nodes::default();
+        let pinned = g.at(0.0, 0.0);
+        let free = g.at(100.0, 0.0);
+        let mut sim = Simulation::new();
+        g.sync(&mut sim);
+        sim.add_force(CouplingForce::new(
+            CouplingResponse::FlowAdvect,
+            1.0,
+            [pinned, free],
+            FieldDefinition::Vector(VectorField::ConstVec { x: 120.0, y: 0.0 }),
+        ));
+        let target = Point2D::new(-200.0, 50.0);
+        sim.pin(pinned, target);
+        let free_start = sim.position_of(free).unwrap();
+        for _ in 0..60 {
+            sim.tick(1.0 / 60.0);
+        }
+        let held = sim.position_of(pinned).unwrap();
+        assert!(
+            (held - target).length() < 1e-3,
+            "the pinned body left its target: {held:?}"
+        );
+        assert!(
+            sim.position_of(free).unwrap().x > free_start.x + 10.0,
+            "the free body is still advected"
         );
     }
 }
