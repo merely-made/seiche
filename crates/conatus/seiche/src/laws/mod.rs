@@ -54,8 +54,7 @@ mod stress;
 pub use anneal::Anneal;
 pub use boids::Boids;
 pub use density::{
-    Density, DensityBounds, DensityDomain, DensityEdge, DensityField, DensityFlow, DensityGrid,
-    DensityMedium, DensityStep,
+    Density, DensityDomain, DensityFlowState, DensityGrid, DensityMedium,
 };
 pub use gravity::Gravity;
 pub use hold::Hold;
