@@ -33,6 +33,8 @@
 
 use cubecl::prelude::*;
 
+use super::binning::cell_index;
+
 /// Threads per cube, and the tile width the repulsion pass stages
 /// through shared memory.
 pub const CUBE_DIM: u32 = 256;
@@ -204,6 +206,95 @@ pub fn exclude(
         forces[out + 1] = fy;
         forces[out + 2] = fz;
         forces[out + 3] = 0.0f32;
+    }
+}
+
+/// [`exclude`]'s law over the cell list `resident::binning` built: each body
+/// visits only the three-by-three block of cells around its own. Cells are at
+/// least `cutoff` wide, so every pair inside the cutoff is in that block; the
+/// cutoff test itself is the same comparison [`exclude`] makes.
+///
+/// Forces land in the bodies' submitted order, read from `positions`; the
+/// neighbours are read from `sorted`, ranged by `starts`.
+#[cube(launch_unchecked)]
+pub fn exclude_cells(
+    positions: &[f32],
+    sorted: &[f32],
+    starts: &[u32],
+    forces: &mut [f32],
+    n: u32,
+    origin_x: f32,
+    origin_y: f32,
+    inv_cell: f32,
+    width: u32,
+    height: u32,
+    strength: f32,
+    cutoff_sq: f32,
+    min_distance: f32,
+) {
+    let stride = STRIDE as usize;
+    let i = ABSOLUTE_POS;
+    if i < n as usize {
+        let base = i * stride;
+        let px = positions[base];
+        let py = positions[base + 1];
+        let pz = positions[base + 2];
+        let cell = cell_index(px, py, origin_x, origin_y, inv_cell, width, height);
+        let cx = cell % width;
+        let cy = cell / width;
+        let mut x0 = cx;
+        if x0 > 0 {
+            x0 -= 1;
+        }
+        let mut y0 = cy;
+        if y0 > 0 {
+            y0 -= 1;
+        }
+        let mut x1 = cx + 1;
+        if x1 >= width {
+            x1 = width - 1;
+        }
+        let mut y1 = cy + 1;
+        if y1 >= height {
+            y1 = height - 1;
+        }
+
+        let mut fx = 0.0f32;
+        let mut fy = 0.0f32;
+        let mut fz = 0.0f32;
+        let mut row = y0;
+        while row <= y1 {
+            let mut col = x0;
+            while col <= x1 {
+                let c = (row * width + col) as usize;
+                let mut k = starts[c] as usize;
+                let end = starts[c + 1] as usize;
+                while k < end {
+                    let other = k * stride;
+                    let dx = px - sorted[other];
+                    let dy = py - sorted[other + 1];
+                    let dz = pz - sorted[other + 2];
+                    let d2 = dx * dx + dy * dy + dz * dz;
+                    if d2 <= cutoff_sq {
+                        let mut dist: f32 = f32::sqrt(d2);
+                        if dist < min_distance {
+                            dist = min_distance;
+                        }
+                        let scale = strength / (dist * dist * dist);
+                        fx += dx * scale;
+                        fy += dy * scale;
+                        fz += dz * scale;
+                    }
+                    k += 1;
+                }
+                col += 1;
+            }
+            row += 1;
+        }
+        forces[base] = fx;
+        forces[base + 1] = fy;
+        forces[base + 2] = fz;
+        forces[base + 3] = 0.0f32;
     }
 }
 
