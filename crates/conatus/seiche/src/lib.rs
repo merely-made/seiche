@@ -82,8 +82,8 @@ pub use forces::{Boundary, EdgeSpring, NodeExclusion};
 pub mod laws;
 pub mod overlays;
 pub use laws::{
-    Anneal, Boids, Density, DensityGrid, DensityMedium, Gravity, Hold, Kuramoto, LinLogForce,
-    MagneticSpring, ParticleLife, StressSpring, graph_distances,
+    Anneal, Boids, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold, Kuramoto,
+    LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
 };
 pub use overlays::{
     DegreeRepulsion, DepthGravity, DomainCluster, GravityLocus, GridSnap, HubGravity,
@@ -257,6 +257,12 @@ fn scene_groups() -> InteractionGroups {
 /// equivalent. Forces are queried in registration order each tick.
 pub trait Force: Send {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32);
+
+    /// Whether the force has motion of its own still to run, so the host
+    /// keeps ticking past its settle budget (a flow that has not converged).
+    fn wants_tick(&self) -> bool {
+        false
+    }
 }
 
 /// The complete law a [`RepulsionSolver`] must preserve.

@@ -65,6 +65,8 @@ pub trait DensityMedium: Send + std::fmt::Debug {
     fn flow(&self, positions: &[Vector], out: &mut Vec<Vector>);
     /// The cell size, in world units: the CFL bound's yardstick.
     fn cell(&self) -> f32;
+    /// The coefficient of variation of the field over its cells.
+    fn field_cv(&self) -> f32;
 }
 
 /// The CPU tier: a square grid of cell-centred densities with walls, splatted
@@ -261,18 +263,29 @@ impl DensityMedium for DensityGrid {
     fn cell(&self) -> f32 {
         self.domain.side / self.resolution as f32
     }
+
+    fn field_cv(&self) -> f32 {
+        let n = self.field.len() as f32;
+        let mean = self.field.iter().sum::<f32>() / n;
+        let var = self.field.iter().map(|u| (u - mean).powi(2)).sum::<f32>() / n;
+        if mean > 0.0 { var.sqrt() / mean } else { 0.0 }
+    }
 }
 
-/// A flow under way: its walls, diffusivity, and the substep diagnostics.
+/// A flow under way: its walls, diffusivity, pass, and the diagnostics.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DensityFlowState {
     pub domain: DensityDomain,
     /// Diffusivity `D`, world units² per second.
     pub diffusivity: f32,
+    /// The mean node spacing at the target area: the yardstick of a shift.
+    pub spacing: f32,
     /// Seconds of flow so far, in this pass.
     pub elapsed: f32,
-    /// Which pass this is, from one.
+    /// Which pass this is since the flow (re)armed, from one.
     pub pass: u32,
+    /// Whether the passes have stopped (the test, or the cap).
+    pub converged: bool,
     /// The substeps the last tick took, and the most any tick has taken.
     pub last_substeps: u32,
     pub max_substeps_seen: u32,
@@ -282,10 +295,39 @@ pub struct DensityFlowState {
     pub last_speed: f32,
 }
 
+/// One finished pass, for the convergence test and its receipts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DensityPass {
+    pub pass: u32,
+    /// Mean distance the moving nodes travelled over the pass, in spacings.
+    pub shift: f32,
+    /// The coefficient of variation of the nodes' field splatted afresh
+    /// where the pass left them: how uneven the layout still is.
+    pub field_cv: f32,
+}
+
+/// When repeated passes stop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DensityStop {
+    /// After `patience` passes in a row whose mean shift is under this many
+    /// node spacings.
+    Shift(f32),
+    /// After `patience` passes in a row whose field CV changed by less than
+    /// this fraction from the pass before.
+    FieldCv(f32),
+    /// Never by test: the pass cap alone.
+    Cap,
+}
+
 #[derive(Debug)]
 struct DensityState {
     medium: Box<dyn DensityMedium>,
     flow: Option<DensityFlowState>,
+    /// Where the nodes stood when this pass began.
+    pass_start: Vec<Vector>,
+    history: Vec<DensityPass>,
+    /// Passes in a row that met the stop test.
+    calm: u32,
 }
 
 /// The Density law: nodes ride Gastner–Newman's diffusing field until mass
@@ -298,9 +340,9 @@ pub struct Density {
     pub area_per_mass: f32,
     /// The walls' centre.
     pub centre: (f32, f32),
-    /// The initial smoothing, in mean node spacings at the target area.
+    /// The initial smoothing of each pass, in mean node spacings.
     pub initial_blur: f32,
-    /// Seconds for the field's slowest mode to even to 1%: sets `D`.
+    /// Seconds of one pass: the field's slowest mode evens to 1% in it.
     pub seconds: f32,
     /// The farthest a node moves in one substep, in cells.
     pub cfl: f32,
@@ -309,10 +351,13 @@ pub struct Density {
     /// A uniform background density, as a fraction of the target density,
     /// so empty cells are not poles. It rides the flow like node mass.
     pub background: f32,
-    /// How many passes the flow makes: each lasts `seconds`, and a new pass
-    /// splats the nodes where the last one left them. One is Gastner and
-    /// Newman's single flow.
-    pub passes: u32,
+    /// The stop test for repeated passes, and how many passes in a row must
+    /// meet it.
+    pub stop: DensityStop,
+    pub patience: u32,
+    /// The pass cap: the fallback that ends the passes if the test never
+    /// does. One is Gastner and Newman's single flow.
+    pub max_passes: u32,
 }
 
 impl Density {
@@ -329,15 +374,23 @@ impl Density {
     ) -> Self {
         Self {
             masses: masses.into_iter().collect(),
-            state: Mutex::new(DensityState { medium, flow: None }),
+            state: Mutex::new(DensityState {
+                medium,
+                flow: None,
+                pass_start: Vec::new(),
+                history: Vec::new(),
+                calm: 0,
+            }),
             area_per_mass: 2_500.0,
             centre: (0.0, 0.0),
             initial_blur: 0.25,
-            seconds: 4.0,
+            seconds: 1.0,
             cfl: 0.5,
             max_substeps: 64,
             background: 0.05,
-            passes: 1,
+            stop: DensityStop::Cap,
+            patience: 1,
+            max_passes: 1,
         }
     }
 
@@ -345,18 +398,25 @@ impl Density {
         self.masses.get(key).copied().unwrap_or(1.0).max(0.01)
     }
 
-    /// The flow under way, if it has begun: walls, `D` and the substep
-    /// diagnostics.
-    pub fn flow_state(&self) -> Option<DensityFlowState> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, DensityState> {
         self.state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .flow
     }
 
-    /// Begin a flow over `particles`: the walls around the target area, `D`
-    /// from `seconds`, the splat smoothed by `initial_blur`.
-    fn begin(&self, state: &mut DensityState, particles: &[(Vector, f32)]) -> DensityFlowState {
+    /// The flow under way, if it has begun.
+    pub fn flow_state(&self) -> Option<DensityFlowState> {
+        self.lock().flow
+    }
+
+    /// Every finished pass since the flow first began, in order.
+    pub fn pass_history(&self) -> Vec<DensityPass> {
+        self.lock().history.clone()
+    }
+
+    /// Begin pass `pass` over the nodes where they stand: the walls around
+    /// the target area, `D` from `seconds`, the splat smoothed.
+    fn begin(&self, state: &mut DensityState, particles: &[(Vector, f32)], pass: u32) {
         let total: f32 = particles.iter().map(|(_, m)| m).sum();
         let side = (total * self.area_per_mass).sqrt();
         let spacing = (self.area_per_mass * total / particles.len() as f32).sqrt();
@@ -371,18 +431,42 @@ impl Density {
             self.initial_blur * spacing,
             self.background * target,
         );
-        let flow = DensityFlowState {
+        let carried = state.flow;
+        state.flow = Some(DensityFlowState {
             domain,
             diffusivity: 4.6 * side * side / (std::f32::consts::PI.powi(2) * self.seconds.max(0.1)),
+            spacing,
             elapsed: 0.0,
-            pass: 1,
+            pass,
+            converged: false,
             last_substeps: 0,
-            max_substeps_seen: 0,
-            capped_ticks: 0,
+            max_substeps_seen: carried.map_or(0, |f| f.max_substeps_seen),
+            capped_ticks: carried.map_or(0, |f| f.capped_ticks),
             last_speed: 0.0,
+        });
+        state.pass_start = particles.iter().map(|(p, _)| *p).collect();
+    }
+
+    /// Close pass `pass`, after the next one has splatted the nodes where
+    /// it left them: record it, apply the stop test, and say whether the
+    /// passes go on.
+    fn close_pass(&self, state: &mut DensityState, pass: u32, shift: f32) -> bool {
+        let field_cv = state.medium.field_cv();
+        let before = state.history.last().copied();
+        state.history.push(DensityPass {
+            pass,
+            shift,
+            field_cv,
+        });
+        let calm = match self.stop {
+            DensityStop::Shift(limit) => shift < limit,
+            DensityStop::FieldCv(limit) => before.is_some_and(|b| {
+                b.pass + 1 == pass && (field_cv - b.field_cv).abs() < limit * b.field_cv
+            }),
+            DensityStop::Cap => false,
         };
-        state.flow = Some(flow);
-        flow
+        state.calm = if calm { state.calm + 1 } else { 0 };
+        state.calm < self.patience.max(1) && pass < self.max_passes.max(1)
     }
 }
 
@@ -392,39 +476,55 @@ impl Force for Density {
         if nodes.is_empty() {
             return;
         }
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let fresh = match state.flow {
-            None => Some(1),
-            Some(flow) if flow.elapsed >= self.seconds && flow.pass < self.passes => {
-                Some(flow.pass + 1)
-            },
-            Some(_) => None,
-        };
-        let mut flow = match fresh {
-            Some(pass) => {
-                let particles: Vec<(Vector, f32)> =
-                    nodes.iter().map(|(k, _, p)| (*p, self.mass(k))).collect();
-                let carried = state.flow;
-                let mut flow = self.begin(&mut state, &particles);
-                flow.pass = pass;
-                if let Some(old) = carried {
-                    flow.max_substeps_seen = old.max_substeps_seen;
-                    flow.capped_ticks = old.capped_ticks;
-                }
-                flow
-            },
-            None => state.flow.expect("a flow under way"),
-        };
         // A pinned (kinematic) body belongs to the drag: its mass is in the
         // field but it is never moved.
         let dynamic: Vec<bool> = nodes
             .iter()
             .map(|(_, h, _)| ctx.bodies.get(*h).is_some_and(|b| b.is_dynamic()))
             .collect();
+        let dragging = dynamic.iter().any(|moves| !moves);
         let mut positions: Vec<Vector> = nodes.iter().map(|(_, _, p)| *p).collect();
+        let particles =
+            || -> Vec<(Vector, f32)> { nodes.iter().map(|(k, _, p)| (*p, self.mass(k))).collect() };
+        let mut state = self.lock();
+        match state.flow {
+            None => self.begin(&mut state, &particles(), 1),
+            Some(flow) if flow.converged => {
+                // A drag re-arms the passes; otherwise the flow is spent.
+                if !dragging {
+                    return;
+                }
+                state.calm = 0;
+                self.begin(&mut state, &particles(), 1);
+            },
+            Some(flow) if flow.elapsed >= self.seconds - 1e-4 => {
+                let moved: Vec<f32> = positions
+                    .iter()
+                    .zip(&state.pass_start)
+                    .zip(&dynamic)
+                    .filter(|(_, moves)| **moves)
+                    .map(|((p, q), _)| (*p - *q).length())
+                    .collect();
+                let shift =
+                    moved.iter().sum::<f32>() / moved.len().max(1) as f32 / flow.spacing.max(1e-3);
+                self.begin(&mut state, &particles(), flow.pass + 1);
+                let more = self.close_pass(&mut state, flow.pass, shift);
+                if dragging {
+                    // A held node keeps the passes going: it is still moving.
+                    state.calm = 0;
+                    if let Some(next) = state.flow.as_mut() {
+                        next.pass = 1;
+                    }
+                } else if !more {
+                    if let Some(spent) = state.flow.as_mut() {
+                        spent.converged = true;
+                    }
+                    return;
+                }
+            },
+            Some(_) => {},
+        }
+        let mut flow = state.flow.expect("a flow under way");
         let lo = flow.domain.min + Vector::splat(NODE_BODY_RADIUS);
         let hi = flow.domain.min + Vector::splat(flow.domain.side - NODE_BODY_RADIUS);
         let reach = self.cfl * state.medium.cell();
@@ -469,6 +569,12 @@ impl Force for Density {
                 body.set_translation(p, true);
             }
         }
+    }
+
+    /// Until the passes stop, the law keeps the host ticking past its settle
+    /// budget; a spent flow lets it rest.
+    fn wants_tick(&self) -> bool {
+        self.lock().flow.is_none_or(|flow| !flow.converged)
     }
 }
 

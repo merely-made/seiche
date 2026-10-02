@@ -169,6 +169,10 @@ impl Force for Shared {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         self.0.apply(ctx, dt);
     }
+
+    fn wants_tick(&self) -> bool {
+        self.0.wants_tick()
+    }
 }
 
 /// The law's claim at small scale: a crowd spreads out and the heavy node
@@ -246,5 +250,63 @@ fn a_pinned_body_is_never_moved() {
     assert!(
         (sim.position_of(NodeKey::new(9)).unwrap() - free_start).length() > 5.0,
         "the free bodies still flow"
+    );
+}
+
+/// The stop: under a shift test the passes end and the law stops asking for
+/// ticks; the pass cap ends them when the test never would; and a drag after
+/// the stop re-arms them, which end again once the node is let go.
+#[test]
+fn passes_stop_on_the_test_or_the_cap_and_a_drag_rearms_them() {
+    let nodes = crowd(16);
+    let run = |law: Density, ticks: usize| {
+        let law = std::sync::Arc::new(law);
+        let mut sim = Simulation::new();
+        sim.sync_nodes(nodes.clone());
+        sim.sync_edges(Vec::<(NodeKey, NodeKey)>::new());
+        sim.set_forces(vec![Box::new(Shared(law.clone()))]);
+        for _ in 0..ticks {
+            sim.tick(1.0 / 60.0);
+        }
+        (sim, law)
+    };
+    let masses = || nodes.iter().map(|(k, _)| (*k, 1.0)).collect::<Vec<_>>();
+    // The test stops the passes well before the cap.
+    let mut converging = Density::new(masses(), 64);
+    converging.stop = DensityStop::Shift(0.05);
+    converging.patience = 2;
+    converging.max_passes = 100;
+    let (mut sim, law) = run(converging, 60 * 30);
+    let flow = law.flow_state().unwrap();
+    assert!(flow.converged, "the test stopped the passes: {flow:?}");
+    assert!(!law.wants_tick() && !sim.wants_continuous_tick());
+    let history = law.pass_history();
+    let stopped = history.len();
+    assert!(stopped < 30, "stopped after {stopped} passes");
+    assert!(history.iter().rev().take(2).all(|p| p.shift < 0.05));
+    // A drag re-arms the passes, and they stop again after the release.
+    sim.pin(NodeKey::new(5), Point2D::new(40.0, 40.0));
+    sim.tick(1.0 / 60.0);
+    assert!(law.wants_tick(), "a held node re-arms the flow");
+    assert!(sim.wants_continuous_tick(), "and the host keeps ticking");
+    for _ in 0..30 {
+        sim.tick(1.0 / 60.0);
+    }
+    sim.unpin(NodeKey::new(5));
+    for _ in 0..60 * 30 {
+        sim.tick(1.0 / 60.0);
+    }
+    assert!(law.flow_state().unwrap().converged, "stopped again");
+    assert!(law.pass_history().len() > stopped, "the drag ran passes");
+    // The cap is the fallback: a test that never passes stops at it.
+    let mut capped = Density::new(masses(), 64);
+    capped.stop = DensityStop::Shift(0.0);
+    capped.max_passes = 3;
+    let (_, law) = run(capped, 60 * 6);
+    assert!(law.flow_state().unwrap().converged);
+    assert_eq!(
+        law.pass_history().len(),
+        3,
+        "the cap ended it at three passes"
     );
 }
