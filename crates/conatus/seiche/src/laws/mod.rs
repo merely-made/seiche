@@ -32,6 +32,8 @@
 //! - [`MagneticSpring`] — directed edges align to a field: hierarchy and
 //!   direction by physics.
 //! - [`Anneal`] — stochastic descent on an energy under a cooling schedule.
+//! - [`Density`] — nodes flow along the gradient of a diffused mass density
+//!   until it is even: room follows mass (Gastner–Newman).
 //!
 //! Every law reads positions and topology from the [`ForceContext`](crate::ForceContext);
 //! what a law needs beyond that (degree, kind, graph distance, mass) it takes
@@ -40,6 +42,7 @@
 
 mod anneal;
 mod boids;
+mod density;
 mod gravity;
 mod hold;
 mod kuramoto;
@@ -50,6 +53,10 @@ mod stress;
 
 pub use anneal::Anneal;
 pub use boids::Boids;
+pub use density::{
+    Density, DensityBounds, DensityDomain, DensityEdge, DensityField, DensityFlow, DensityGrid,
+    DensityMedium, DensityStep,
+};
 pub use gravity::Gravity;
 pub use hold::Hold;
 pub use kuramoto::Kuramoto;
