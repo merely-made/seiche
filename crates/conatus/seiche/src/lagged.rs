@@ -70,6 +70,12 @@ pub struct LaggedStats {
     pub failures: u64,
     /// Answers that arrived for a body set that had since changed.
     pub mismatched: u64,
+    /// CPU steps with no answer collected yet.
+    pub waiting: u64,
+    /// CPU steps whose newest answer was older than the limit.
+    pub stale: u64,
+    /// The newest answer's age in steps at the last step that had one.
+    pub last_age: u64,
 }
 
 struct Answer {
@@ -161,8 +167,18 @@ impl LaggedLane {
                 self.latest = None;
                 false
             },
-            Some(answer) => now.saturating_sub(answer.step) <= u64::from(self.max_stale_steps),
-            None => false,
+            Some(answer) => {
+                self.stats.last_age = now.saturating_sub(answer.step);
+                let fresh = self.stats.last_age <= u64::from(self.max_stale_steps);
+                if !fresh {
+                    self.stats.stale += 1;
+                }
+                fresh
+            },
+            None => {
+                self.stats.waiting += 1;
+                false
+            },
         };
         if usable {
             self.stats.device_steps += 1;
