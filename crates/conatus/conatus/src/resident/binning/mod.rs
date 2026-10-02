@@ -125,7 +125,7 @@ pub fn count(
 #[cube(launch_unchecked)]
 pub fn scan_sweep(data: &mut [u32], aux: &mut [u32], len: u32, #[comptime] width: usize) {
     let mut workspace = Shared::<[u32]>::new_slice(width);
-    let block = CUBE_POS as usize;
+    let block = CUBE_POS;
     let tid = UNIT_POS as usize;
     let data_len = len as usize;
     let element = tid + block * width;
@@ -148,7 +148,8 @@ pub fn scan_sweep(data: &mut [u32], aux: &mut [u32], len: u32, #[comptime] width
         if tid < d {
             let ia = tid * 2 * offset + offset - 1;
             let ib = (tid * 2 + 1) * offset + offset - 1;
-            workspace[ib] = workspace[ia] + workspace[ib];
+            let sum = workspace[ia] + workspace[ib];
+            workspace[ib] = sum;
         }
         d /= 2;
         offset *= 2;
@@ -192,7 +193,7 @@ pub fn scan_sweep(data: &mut [u32], aux: &mut [u32], len: u32, #[comptime] width
 #[cube(launch_unchecked)]
 pub fn scan_add(data: &mut [u32], aux: &[u32], len: u32) {
     let element = ABSOLUTE_POS;
-    let block = CUBE_POS as usize;
+    let block = CUBE_POS;
     if element < len as usize {
         data[element] += aux[block];
     }

@@ -378,3 +378,69 @@ fn exclusion_cost_per_call() {
         );
     }
 }
+
+/// Submit-to-ready time for a caller that sleeps 1 ms between looks, as a
+/// frame loop does, with a 16 ms gap between submissions. Before
+/// `ResidentClient::poll_device` this took 14 ms at the median; with it,
+/// the answer is there on the second look.
+/// `cargo test -p conatus --features resident --release --test exclusion -- --ignored readback_latency --nocapture`
+#[test]
+#[ignore]
+fn readback_latency_with_a_sleeping_caller() {
+    let Some(client) = client() else { return };
+    let mut lane = Exclusion::new(&client);
+    for n in [200usize, 2_000] {
+        let positions = scatter(n, 140.0);
+        lane.submit(&positions, law()).wait().unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..40 {
+            let start = Instant::now();
+            let mut pending = lane.submit(&positions, law());
+            let mut polls = 0;
+            loop {
+                polls += 1;
+                if pending.try_take().is_some() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            samples.push((start.elapsed().as_secs_f64() * 1e3, polls));
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
+        let mut ms: Vec<f64> = samples.iter().map(|s| s.0).collect();
+        ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let looks: Vec<u32> = samples.iter().map(|s| s.1).collect();
+        println!(
+            "n={n}: submit-to-ready p50 {:.2} ms p90 {:.2} max {:.2}; looks {looks:?}",
+            ms[20], ms[36], ms[39]
+        );
+    }
+}
+
+/// A reader dropped mid-flight (a law switch, a closed canvas) must not leave
+/// a mapped staging buffer for the next submit to trip on. Before readbacks
+/// were adopted by the client, the per-tick bench failed wgpu validation
+/// ("Buffer ... is still mapped" in `Queue::submit`) on exactly this.
+#[test]
+fn a_dropped_reader_leaves_no_mapped_buffer_behind() {
+    let Some(client) = client() else {
+        eprintln!("no wgpu adapter: skipping the dropped-reader receipt");
+        return;
+    };
+    let mut lane = Exclusion::new(&client);
+    let positions = scatter(500, 140.0);
+    for _ in 0..50 {
+        drop(lane.submit(&positions, law()));
+    }
+    for _ in 0..20 {
+        lane.submit(&positions, law())
+            .wait()
+            .expect("readback after drops");
+    }
+    let start = Instant::now();
+    while client.orphans() > 0 && start.elapsed().as_secs() < 5 {
+        client.poll_device();
+        std::thread::yield_now();
+    }
+    assert_eq!(client.orphans(), 0, "adopted readbacks never finished");
+}

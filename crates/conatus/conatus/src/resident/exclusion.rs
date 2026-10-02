@@ -75,6 +75,7 @@ type Readback =
 
 /// The exclusion dispatch on a host's CubeCL client.
 pub struct Exclusion {
+    resident: ResidentClient,
     client: ComputeClient<WgpuRuntime>,
     dispatches: u64,
     cell_dispatches: u64,
@@ -95,6 +96,7 @@ impl std::fmt::Debug for Exclusion {
 impl Exclusion {
     pub fn new(client: &ResidentClient) -> Self {
         Self {
+            resident: client.clone(),
             client: client.compute_client().clone(),
             dispatches: 0,
             cell_dispatches: 0,
@@ -159,9 +161,13 @@ impl Exclusion {
     /// start reading the forces back. Returns at once.
     pub fn submit(&mut self, positions: &[[f32; 4]], params: ExclusionParams) -> PendingExclusion {
         let n = positions.len();
+        // Finish any readback a dropped reader left, before a launch could
+        // reuse its staging buffer.
+        self.resident.poll_device();
         if n == 0 {
             return PendingExclusion {
                 n,
+                device: None,
                 cells: false,
                 state: State::Ready(Vec::new()),
             };
@@ -219,6 +225,7 @@ impl Exclusion {
         let client = self.client.clone();
         let mut pending = PendingExclusion {
             n,
+            device: Some(self.resident.clone()),
             cells: grid.is_some(),
             state: State::Reading(Box::pin(
                 async move { client.read_async(vec![output]).await },
@@ -234,6 +241,18 @@ impl Exclusion {
     }
 }
 
+impl Drop for PendingExclusion {
+    fn drop(&mut self) {
+        if let (State::Reading(_), Some(device)) = (&self.state, &self.device)
+            && let State::Reading(read) = std::mem::replace(&mut self.state, State::Taken)
+        {
+            device.adopt(Box::pin(async move {
+                let _ = read.await;
+            }));
+        }
+    }
+}
+
 enum State {
     Reading(Readback),
     Ready(Vec<[f32; 4]>),
@@ -244,6 +263,8 @@ enum State {
 /// One submitted exclusion whose forces are on their way back.
 pub struct PendingExclusion {
     n: usize,
+    /// Polled for map callbacks before each look at the readback.
+    device: Option<ResidentClient>,
     cells: bool,
     state: State,
 }
@@ -267,6 +288,9 @@ impl PendingExclusion {
     /// read is in flight, and after the result has been taken.
     pub fn try_take(&mut self) -> Option<Result<Vec<[f32; 4]>, ExclusionError>> {
         if let State::Reading(read) = &mut self.state {
+            if let Some(device) = &self.device {
+                device.poll_device();
+            }
             let mut context = Context::from_waker(Waker::noop());
             match read.as_mut().poll(&mut context) {
                 Poll::Pending => return None,

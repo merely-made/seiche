@@ -216,6 +216,8 @@ pub fn exclude(
 ///
 /// Forces land in the bodies' submitted order, read from `positions`; the
 /// neighbours are read from `sorted`, ranged by `starts`.
+// The cube dialect has no `saturating_sub`; the bounds are written out.
+#[allow(clippy::implicit_saturating_sub)]
 #[cube(launch_unchecked)]
 pub fn exclude_cells(
     positions: &[f32],
