@@ -40,9 +40,11 @@ use cubecl::server::Handle;
 use cubecl::wgpu::WgpuRuntime;
 
 mod chunk;
+mod exclusion;
 pub mod kernels;
 
 pub use chunk::*;
+pub use exclusion::{Exclusion, ExclusionError, ExclusionParams, PendingExclusion};
 
 /// One step's constants. [`Resident::new`] owns the matching CubeCL argument
 /// order, so a field added on one side and forgotten on the other fails at

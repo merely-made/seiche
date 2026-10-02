@@ -7,7 +7,9 @@
 //! Conatus resident kernels, authored in CubeCL.
 //!
 //! The three dispatches the field tier advances by (repulsion, springs,
-//! integration) plus the settle reduction, written once here and
+//! integration) plus the settle reduction, and [`exclude`], the node
+//! exclusion law a rapier host stages here (see `resident::exclusion`),
+//! written once here and
 //! compiled by CubeCL to whatever the adapter takes. This is the engine
 //! composition ruling's authored lane: our kernels are CubeCL, and the
 //! buffers they run over are the same CubeCL allocations Burn
@@ -104,6 +106,92 @@ pub fn repulse(
             fx += dx * inv;
             fy += dy * inv;
             fz += dz * inv;
+            k += 1;
+        }
+        sync_cube();
+        t += 1;
+    }
+
+    if i < count_n {
+        let out = i * stride;
+        forces[out] = fx;
+        forces[out + 1] = fy;
+        forces[out + 2] = fz;
+        forces[out + 3] = 0.0f32;
+    }
+}
+
+/// `seiche::NodeExclusion`'s exact law over every pair, tiled through shared
+/// memory: inverse square, a hard `min_distance` floor (not softening), and no
+/// interaction past `cutoff` (given squared, the comparison the CPU makes).
+///
+/// The self pair adds nothing because its displacement is zero, as on the CPU.
+/// Threads past `n` still load and barrier, as in [`repulse`].
+#[cube(launch_unchecked)]
+pub fn exclude(
+    positions: &[f32],
+    forces: &mut [f32],
+    n: u32,
+    strength: f32,
+    cutoff_sq: f32,
+    min_distance: f32,
+    #[comptime] tile_floats: usize,
+) {
+    let mut tile = Shared::<[f32]>::new_slice(tile_floats);
+    let stride = STRIDE as usize;
+    let width = CUBE_DIM as usize;
+    let count_n = n as usize;
+    let i = ABSOLUTE_POS;
+    let unit = UNIT_POS as usize;
+    let last = count_n - 1;
+    let mut mine = i;
+    if mine > last {
+        mine = last;
+    }
+    let base_i = mine * stride;
+    let px = positions[base_i];
+    let py = positions[base_i + 1];
+    let pz = positions[base_i + 2];
+
+    let mut fx = 0.0f32;
+    let mut fy = 0.0f32;
+    let mut fz = 0.0f32;
+    let tiles = count_n.div_ceil(width);
+    let mut t = 0usize;
+    while t < tiles {
+        let mut j = t * width + unit;
+        if j > last {
+            j = last;
+        }
+        let src = j * stride;
+        let dst = unit * stride;
+        tile[dst] = positions[src];
+        tile[dst + 1] = positions[src + 1];
+        tile[dst + 2] = positions[src + 2];
+        sync_cube();
+
+        let start = t * width;
+        let mut count = width;
+        if count_n - start < width {
+            count = count_n - start;
+        }
+        let mut k = 0usize;
+        while k < count {
+            let other = k * stride;
+            let dx = px - tile[other];
+            let dy = py - tile[other + 1];
+            let dz = pz - tile[other + 2];
+            let d2 = dx * dx + dy * dy + dz * dz;
+            if d2 <= cutoff_sq {
+                let mut dist: f32 = f32::sqrt(d2);
+                if dist < min_distance {
+                    dist = min_distance;
+                }
+                let scale = strength / (dist * dist * dist);
+                fx += dx * scale;
+                fy += dy * scale;
+                fz += dz * scale;
+            }
             k += 1;
         }
         sync_cube();
