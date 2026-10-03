@@ -39,8 +39,9 @@ use armillary::{ActorHandle, Emitter, Wake, spawn};
 use euclid::default::Point2D;
 
 use crate::{
-    AffinitySpring, Basin, CouplingForce, FluidParams, Force, LayoutSnapshot, LayoutView,
-    NodeCollider, NodeKey, NodeMaterial, SceneEmitter, SceneField, SceneSpec, Simulation,
+    AffinitySpring, Basin, CouplingForce, FluidParams, Force, LaggedRepulsion, LaggedStats,
+    LayoutSnapshot, LayoutView, NodeCollider, NodeKey, NodeMaterial, SceneEmitter, SceneField,
+    SceneSpec, Simulation,
 };
 
 /// Per-tick timestep handed to the simulation: one 60fps frame. The whole
@@ -92,6 +93,14 @@ pub enum PhysicsCommand {
     /// slots alone. Position-preserving: no body moves until the next tick.
     /// (Physics catalog — P1.)
     SetForces(Vec<Box<dyn Force>>),
+    /// Install (or clear) a lagged evaluator for `NodeExclusion` (see
+    /// [`Simulation::set_lagged_repulsion`]): how a host's device reaches a
+    /// simulation that is already offloaded. (Physics catalog P5b.)
+    SetLaggedRepulsion {
+        solver: Option<Box<dyn LaggedRepulsion>>,
+        threshold: usize,
+        max_stale_steps: u32,
+    },
     /// Set the linear damping (the "inertia" physics setting) on new + live bodies.
     SetLinearDamping(f32),
     /// Reshape node colliders to per-node face shapes (see [`Simulation::set_node_colliders`]).
@@ -361,6 +370,39 @@ impl Physics {
             Physics::Inline(p) => p.sim.affinity_pair_count(),
             #[cfg(feature = "actor")]
             Physics::Actor(_) => 0,
+        }
+    }
+
+    /// Install (or clear) a lagged evaluator for `NodeExclusion`, inline or
+    /// on the actor. See [`Simulation::set_lagged_repulsion`].
+    pub fn set_lagged_repulsion(
+        &mut self,
+        solver: Option<Box<dyn LaggedRepulsion>>,
+        threshold: usize,
+        max_stale_steps: u32,
+    ) {
+        match self {
+            Physics::Inline(p) => p
+                .sim
+                .set_lagged_repulsion(solver, threshold, max_stale_steps),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetLaggedRepulsion {
+                    solver,
+                    threshold,
+                    max_stale_steps,
+                });
+            },
+        }
+    }
+
+    /// The lagged lane's counts (inline backend; `None` offloaded, where the
+    /// device's own counters are the read).
+    pub fn repulsion_stats(&self) -> Option<LaggedStats> {
+        match self {
+            Physics::Inline(p) => p.sim.repulsion_stats(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(_) => None,
         }
     }
 
@@ -804,6 +846,11 @@ fn apply(
         PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),
         PhysicsCommand::SetAnchorForce(force) => sim.set_anchor_force(force),
         PhysicsCommand::SetForces(forces) => sim.set_forces(forces),
+        PhysicsCommand::SetLaggedRepulsion {
+            solver,
+            threshold,
+            max_stale_steps,
+        } => sim.set_lagged_repulsion(solver, threshold, max_stale_steps),
         PhysicsCommand::SetLinearDamping(damping) => sim.set_linear_damping(damping),
         PhysicsCommand::SetNodeColliders(colliders) => sim.set_node_colliders(colliders),
         PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),

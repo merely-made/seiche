@@ -11,7 +11,16 @@
 //! arrangements of that allocation. Neither view imports or copies the
 //! plane, and this module deliberately offers no CPU whole-plane read.
 
-use std::{collections::BTreeMap, fmt, mem::size_of_val, num::NonZeroU64};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    future::Future,
+    mem::size_of_val,
+    num::NonZeroU64,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Waker},
+};
 
 use burn::tensor::{DType, Shape, Tensor};
 use burn_wgpu::{
@@ -390,7 +399,17 @@ impl BurnTensorView {
 pub struct ResidentClient {
     compute: ComputeClient<WgpuRuntime>,
     device: WgpuDevice,
+    /// The host's wgpu device, when this client was built from it, so a
+    /// reader can poll map callbacks without blocking (see
+    /// [`Self::poll_device`]).
+    wgpu_device: Option<wgpu::Device>,
+    /// Readbacks whose reader went away before they finished, polled to the
+    /// end here (see [`Self::adopt`]).
+    orphans: Arc<Mutex<Vec<Orphan>>>,
 }
+
+/// A readback nobody waits for any more, kept alive until it completes.
+pub type Orphan = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 impl fmt::Debug for ResidentClient {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -403,13 +422,42 @@ impl fmt::Debug for ResidentClient {
 
 impl ResidentClient {
     pub fn init(setup: WgpuSetup) -> Self {
+        let wgpu_device = setup.device.clone();
         let device = init_device(setup, RuntimeOptions::default());
-        Self::from_registered_device(device)
+        Self {
+            wgpu_device: Some(wgpu_device),
+            ..Self::from_registered_device(device)
+        }
+    }
+
+    /// [`Self::init`] from a host's four wgpu handles (a renderer's
+    /// `WgpuHandles`, say), reading the backend off the adapter. Each call
+    /// registers one more CubeCL device: a host makes one client per device
+    /// and clones it.
+    pub fn from_wgpu(
+        instance: wgpu::Instance,
+        adapter: wgpu::Adapter,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+    ) -> Self {
+        let backend = adapter.get_info().backend;
+        Self::init(WgpuSetup {
+            instance,
+            adapter,
+            device,
+            queue,
+            backend,
+        })
     }
 
     pub fn from_registered_device(device: WgpuDevice) -> Self {
         let compute = WgpuRuntime::client(&device);
-        Self { compute, device }
+        Self {
+            compute,
+            device,
+            wgpu_device: None,
+            orphans: Arc::default(),
+        }
     }
 
     /// The CubeCL client every resident allocation is made through.
@@ -423,6 +471,43 @@ impl ResidentClient {
 
     pub fn device(&self) -> &WgpuDevice {
         &self.device
+    }
+
+    /// Deliver any finished map callbacks without waiting (a no-op in a
+    /// browser, whose event loop delivers them). CubeCL's own poll thread
+    /// delivers them too, but measured late: with a caller that sleeps
+    /// between polls a readback took 14 ms at the median against 1 ms when
+    /// the caller spun, and 2 ms with this poll first (2026-10-02).
+    pub fn poll_device(&self) {
+        if let Some(device) = &self.wgpu_device {
+            let _ = device.poll(wgpu::PollType::Poll);
+        }
+        self.reap();
+    }
+
+    /// Keep a readback whose reader is gone until it completes. Dropping an
+    /// unfinished CubeCL read releases its staging buffer while the buffer is
+    /// mapped or about to be, and the next submit that reuses it fails wgpu
+    /// validation ("still mapped"); finishing it lets CubeCL unmap and
+    /// release the buffer itself. Never blocks, so it serves a browser too.
+    pub fn adopt(&self, readback: Orphan) {
+        if let Ok(mut orphans) = self.orphans.lock() {
+            orphans.push(readback);
+        }
+    }
+
+    /// Poll every adopted readback once and drop the finished ones.
+    pub fn reap(&self) {
+        let Ok(mut orphans) = self.orphans.lock() else {
+            return;
+        };
+        let mut context = Context::from_waker(Waker::noop());
+        orphans.retain_mut(|readback| readback.as_mut().poll(&mut context).is_pending());
+    }
+
+    /// Readbacks adopted and not yet finished.
+    pub fn orphans(&self) -> usize {
+        self.orphans.lock().map_or(0, |orphans| orphans.len())
     }
 }
 
