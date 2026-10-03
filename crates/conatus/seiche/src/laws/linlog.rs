@@ -316,4 +316,128 @@ mod tests {
             "LinLog settles: {linlog}"
         );
     }
+
+    /// Diagnostic (energy-frame lane, 2026-10-03): the P2 fixture's topology
+    /// (two components, 5 and 6 nodes, 10 relations) from a Spiral-sized seed,
+    /// 60 s at the tick, under Springs and under Energy at its default and at
+    /// candidate tunings. Prints extent, island separation, edge length,
+    /// overlaps, and the zoom the tree page's 982 x 627 canvas would need.
+    #[test]
+    #[ignore = "diagnostic: prints the scale readings"]
+    fn diag_energy_scale_on_the_p2_fixture() {
+        let keys: Vec<NodeKey> = (0..11).map(NodeKey::new).collect();
+        let pairs = [
+            (0, 1), (0, 2), (3, 0), (3, 2), (4, 3),
+            (5, 6), (5, 7), (6, 8), (9, 5), (10, 9),
+        ];
+        let edges: Vec<_> = pairs.iter().map(|&(a, b)| (keys[a], keys[b])).collect();
+        let island = |i: usize| usize::from(i >= 5);
+        let run = |label: &str, forces: Vec<Box<dyn Force>>| {
+            let mut sim = Simulation::new();
+            sim.sync_nodes(keys.iter().enumerate().map(|(i, &k)| {
+                let (r, t) = (19.0 * (i as f32).sqrt(), i as f32 * 2.399_963);
+                (k, Point2D::new(r * t.cos(), r * t.sin()))
+            }));
+            sim.sync_edges(edges.clone());
+            sim.set_forces(forces);
+            let mut line = format!("{label}:");
+            for tick in 1..=3600u32 {
+                sim.tick(crate::TICK_DT);
+                if ![60, 360, 1200, 3600].contains(&tick) {
+                    continue;
+                }
+                let at: Vec<Vector> = keys
+                    .iter()
+                    .map(|k| sim.position_of(*k).map_or(Vector::ZERO, |p| Vector::new(p.x, p.y)))
+                    .collect();
+                let (mut lo, mut hi) = (at[0], at[0]);
+                for p in &at {
+                    lo = Vector::new(lo.x.min(p.x), lo.y.min(p.y));
+                    hi = Vector::new(hi.x.max(p.x), hi.y.max(p.y));
+                }
+                let mut c = [Vector::ZERO; 2];
+                for (i, p) in at.iter().enumerate() {
+                    c[island(i)] += *p / if island(i) == 0 { 5.0 } else { 6.0 };
+                }
+                let radius = at
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (*p - c[island(i)]).length())
+                    .sum::<f32>()
+                    / 11.0;
+                let edge = pairs.iter().map(|&(a, b)| (at[a] - at[b]).length()).sum::<f32>() / 10.0;
+                let mut overlaps = 0;
+                for i in 0..11 {
+                    for j in (i + 1)..11 {
+                        overlaps += usize::from((at[i] - at[j]).length() < 36.0);
+                    }
+                }
+                let (w, h) = (hi.x - lo.x, hi.y - lo.y);
+                let zoom = (982.0 / (w + 320.0)).min(627.0 / (h + 320.0)).min(1.0);
+                let outside = at
+                    .iter()
+                    .filter(|p| p.x.abs() > 491.0 || p.y.abs() > 313.5)
+                    .count();
+                line += &format!(
+                    "\n  {:>4.0} s: extent {w:.0}x{h:.0}, islands {:.0} apart, island radius \
+                     {radius:.0}, ratio {:.1}, mean edge {edge:.0}, overlaps {overlaps}, fit \
+                     zoom {zoom:.3}, outside the boot view {outside}/11, energy {:.1}",
+                    tick as f32 / 60.0,
+                    (c[0] - c[1]).length(),
+                    (c[0] - c[1]).length() / radius.max(1.0),
+                    sim.kinetic_energy(),
+                );
+            }
+            println!("{line}");
+        };
+        run(
+            "springs",
+            vec![
+                Box::new(NodeExclusion::default()),
+                Box::new(EdgeSpring::default()),
+                Box::new(Boundary::default()),
+            ],
+        );
+        let d = LinLogForce::default();
+        for (label, law) in [
+            ("energy default (r 60000, g 0.02, a 4)", d),
+            ("energy r 6000", LinLogForce { repulsion: 6_000.0, ..d }),
+            ("energy r 600", LinLogForce { repulsion: 600.0, ..d }),
+            ("energy g 0.2", LinLogForce { gravity: 0.2, ..d }),
+            ("energy g 2", LinLogForce { gravity: 2.0, ..d }),
+            ("energy r 10000, g 1.2", LinLogForce { repulsion: 10_000.0, gravity: 1.2, ..d }),
+            ("energy r 6000, g 0.2", LinLogForce { repulsion: 6_000.0, gravity: 0.2, ..d }),
+            ("energy r 6000, g 0.6", LinLogForce { repulsion: 6_000.0, gravity: 0.6, ..d }),
+        ] {
+            run(label, vec![Box::new(NodeExclusion::default()), Box::new(law)]);
+            // The law's own claim at this tuning: the two-cliques ratio.
+            println!(
+                "  two cliques: {:.2} (Springs {:.2})",
+                settle(vec![Box::new(law)]),
+                settle(vec![
+                    Box::new(NodeExclusion::default()),
+                    Box::new(EdgeSpring::default()),
+                    Box::new(Boundary::default()),
+                ]),
+            );
+        }
+        // Orbit beside it: masses by degree + 1, with and without exclusion.
+        let mut degree = [1.0f32; 11];
+        for &(a, b) in &pairs {
+            degree[a] += 1.0;
+            degree[b] += 1.0;
+        }
+        let masses = || keys.iter().copied().zip(degree).collect::<Vec<_>>();
+        run(
+            "orbit (exclusion + gravity, as the catalog builds it)",
+            vec![
+                Box::new(NodeExclusion::default()),
+                Box::new(crate::Gravity::new(masses())),
+            ],
+        );
+        run(
+            "orbit without exclusion",
+            vec![Box::new(crate::Gravity::new(masses()))],
+        );
+    }
 }
