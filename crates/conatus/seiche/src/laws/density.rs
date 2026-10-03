@@ -168,6 +168,9 @@ pub struct Density {
     /// The pass cap: the fallback that ends the passes if the test never
     /// does. One is Gastner and Newman's single flow.
     pub max_passes: u32,
+    /// The fewest passes before the stop test may end them: earlier passes
+    /// run whatever the test says. Zero by default.
+    pub min_passes: u32,
     /// Each pass's diffusivity as a fraction of the last one's: below one,
     /// later passes carry the nodes less (an annealed flow). One by default.
     pub decay: f32,
@@ -221,6 +224,7 @@ impl Density {
             stop: DensityStop::Cap,
             patience: 1,
             max_passes: 1,
+            min_passes: 0,
             decay: 1.0,
             quench: false,
             wall_inset: NODE_BODY_RADIUS,
@@ -309,7 +313,8 @@ impl Density {
             DensityStop::Cap => false,
         };
         state.calm = if calm { state.calm + 1 } else { 0 };
-        state.calm < self.patience.max(1) && pass < self.max_passes.max(1)
+        (pass < self.min_passes || state.calm < self.patience.max(1))
+            && pass < self.max_passes.max(1)
     }
 }
 
