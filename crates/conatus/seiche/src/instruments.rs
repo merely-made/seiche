@@ -12,13 +12,13 @@
 //! - [`descent`]: under overdamped flow an E or Em term's energy never rises;
 //! - [`gradient_error`]: its forces are its energy's gradient, in its metric;
 //! - [`balance`]: an internal term's metric-weighted forces sum to zero;
-//! - for a term with no energy, three candidate tests of conservativeness,
-//!   to be chosen between by the positive control (Kinds, seeded against
-//!   symmetrized): [`loop_work`] around a closed loop in joint configuration
-//!   space, [`jacobian_asymmetry`], and [`persistent_motion`] under the
-//!   integrator;
+//! - for a term with no energy, [`jacobian_asymmetry`] is the descent test
+//!   (ruled 2026-10-03, F14: "Jacobian symmetry"); [`loop_work`] around a
+//!   closed loop in joint configuration space and [`persistent_motion`] under
+//!   the integrator, the other two candidates, stay as diagnostics;
 //! - [`velocity_read`]: whether the force at fixed positions changes with the
-//!   bodies' velocities, which no position-only test can see.
+//!   bodies' velocities, which no position-only test can see, checked beside
+//!   the descent test (F15: "Keep velocity check").
 //!
 //! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G1.
 

@@ -77,18 +77,25 @@ fn starts(probe: &Probe) -> Vec<Vec<Vector>> {
     (1..=3).map(|seed| probe.scatter(seed, 150.0)).collect()
 }
 
+/// Jacobian symmetry, the descent test for a term with no energy, passes a
+/// spring and fails a curl; the two diagnostics' verdicts are printed.
 #[test]
-fn a_gradient_passes_and_a_curl_fails_every_conservativeness_candidate() {
+fn a_gradient_passes_and_a_curl_fails_the_descent_test() {
     let (keys, edges) = p2();
     let mut probe = Probe::new(&keys, &edges);
     let starts = starts(&probe);
     let spring = read(&mut probe, &|| Box::new(EdgeSpring::default()), 0, &starts);
     let swirl = read(&mut probe, &|| Box::new(Swirl), 0, &starts);
-    for candidate in Candidate::ALL {
-        assert!(spring.conservative(candidate), "{candidate:?}: {spring:?}");
-        assert!(!swirl.conservative(candidate), "{candidate:?}: {swirl:?}");
-        spring.agrees(candidate).unwrap();
-        swirl.agrees(candidate).unwrap();
+    assert!(spring.conservative(Candidate::Jacobian), "{spring:?}");
+    assert!(!swirl.conservative(Candidate::Jacobian), "{swirl:?}");
+    spring.agrees().unwrap();
+    swirl.agrees().unwrap();
+    for candidate in [Candidate::LoopWork, Candidate::Motion] {
+        println!(
+            "{candidate:?}: spring conservative {}, swirl conservative {}",
+            spring.conservative(candidate),
+            swirl.conservative(candidate)
+        );
     }
 }
 
@@ -149,8 +156,9 @@ fn linlog_at_exponent_zero_runs_and_descends_its_own_energy() {
 }
 
 /// The positive control on the P2 fixture, the catalog's seed and kinds:
-/// Kinds' seeded matrix reads non-conservative by every candidate and does
-/// not balance; its symmetrized twin is E and agrees on everything.
+/// Kinds' seeded matrix fails the descent test and does not balance; its
+/// symmetrized twin is E and agrees on everything. The diagnostics' verdicts
+/// are printed.
 #[test]
 fn kinds_seeded_fails_and_symmetrized_passes_on_the_p2_fixture() {
     let (keys, edges) = p2();
@@ -168,10 +176,15 @@ fn kinds_seeded_fails_and_symmetrized_passes_on_the_p2_fixture() {
     };
     assert_eq!((fails.term.class, passes.term.class), (Class::N, Class::E));
     assert!(fails.balance.unwrap() > tolerance::BALANCE, "{fails:?}");
-    for candidate in Candidate::ALL {
-        assert!(!fails.conservative(candidate), "{candidate:?}: {fails:?}");
-        assert!(passes.conservative(candidate), "{candidate:?}: {passes:?}");
-        fails.agrees(candidate).unwrap();
-        passes.agrees(candidate).unwrap();
+    assert!(!fails.conservative(Candidate::Jacobian), "{fails:?}");
+    assert!(passes.conservative(Candidate::Jacobian), "{passes:?}");
+    fails.agrees().unwrap();
+    passes.agrees().unwrap();
+    for candidate in [Candidate::LoopWork, Candidate::Motion] {
+        println!(
+            "{candidate:?}: seeded conservative {}, symmetrized conservative {}",
+            fails.conservative(candidate),
+            passes.conservative(candidate)
+        );
     }
 }

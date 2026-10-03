@@ -35,7 +35,9 @@ pub mod tolerance {
 /// The loop's size in world units, per body.
 const LOOP_AMPLITUDE: f32 = 40.0;
 
-/// A test of conservativeness for a term with no energy.
+/// A test of conservativeness for a term with no energy. Jacobian symmetry
+/// is the one [`Reading::agrees`] judges by (F14); the other two are
+/// diagnostics, read through [`Reading::agrees_by`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Candidate {
     LoopWork,
@@ -150,9 +152,18 @@ impl Reading {
         }
     }
 
-    /// Whether the readings agree with the declared class, conservativeness
-    /// judged by `candidate`. A K term writes state and is not read here.
-    pub fn agrees(&self, candidate: Candidate) -> Result<(), String> {
+    /// Whether the readings agree with the declared class: the energy
+    /// instruments for E and Em, balance for an internal term, Jacobian
+    /// symmetry as the descent test (F14), and the velocity check beside it,
+    /// so a term that reads velocity must declare N (F15). A K term writes
+    /// state and is not read here.
+    pub fn agrees(&self) -> Result<(), String> {
+        self.agrees_by(Candidate::Jacobian)
+    }
+
+    /// The same, conservativeness judged by `candidate`: the diagnostics'
+    /// view.
+    pub fn agrees_by(&self, candidate: Candidate) -> Result<(), String> {
         use crate::Class;
         let name = self.term.name;
         let fail = |what: &str| Err(format!("{name} ({:?}): {what}: {self:?}", self.term.class));
