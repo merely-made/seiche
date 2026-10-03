@@ -108,6 +108,8 @@ pub enum PhysicsCommand {
     /// Set per-node physical materials (restitution / friction / density; see
     /// [`Simulation::set_node_materials`]). (Node body & face — material.)
     SetNodeMaterials(Vec<(NodeKey, NodeMaterial)>),
+    /// Hold node bodies on axes (see [`Simulation::set_axis_locks`]). (G7.)
+    SetAxisLocks(Vec<(NodeKey, crate::Axes)>),
     /// Add a non-graph scene-decoration body (shape, world position, drift velocity).
     /// (Physics scenes P1.)
     AddSceneBody(NodeCollider, Point2D<f32>, (f32, f32)),
@@ -308,9 +310,9 @@ impl Physics {
         }
     }
 
-    /// Install (or clear, with `None`) per-node **anchor** springs toward an
-    /// arrangement's slots — the layout as a participant in the sim rather than
-    /// an override of it. Position-preserving. (Arrangement as attractor.)
+    /// Install (or clear, with `None`) per-node **anchor** springs toward the
+    /// anchored items' arrangement positions (the anchored role, G7).
+    /// Position-preserving.
     pub fn set_anchor_force(&mut self, force: Option<crate::AnchorSpring>) {
         match self {
             Physics::Inline(p) => p.sim.set_anchor_force(force),
@@ -441,6 +443,18 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::SetNodeMaterials(materials));
+            },
+        }
+    }
+
+    /// Hold node bodies on the given axes (an encoded axis, F28); see
+    /// [`Simulation::set_axis_locks`]. (Dynamics grammar plan, G7.)
+    pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
+        match self {
+            Physics::Inline(p) => p.sim.set_axis_locks(locks),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetAxisLocks(locks));
             },
         }
     }
@@ -842,6 +856,7 @@ fn apply(
         PhysicsCommand::SetLinearDamping(damping) => sim.set_linear_damping(damping),
         PhysicsCommand::SetNodeColliders(colliders) => sim.set_node_colliders(colliders),
         PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),
+        PhysicsCommand::SetAxisLocks(locks) => sim.set_axis_locks(locks),
         PhysicsCommand::AddSceneBody(collider, position, velocity) => {
             sim.add_scene_body(collider, position, velocity);
         },
