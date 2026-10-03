@@ -92,6 +92,9 @@ impl Physics {
                 p.pace.owe(speed::nanos(accepted));
                 let owed_steps = p.pace.owed_steps();
                 let cap = p.pace.scaled_cap(config.max_steps);
+                // What real time would run in this call: the budget's floor.
+                let floor = (speed::nanos(accepted) / speed::TICK_NS)
+                    .min(u64::from(config.max_steps)) as u32;
                 let clock = p.pace.budget.map(|budget| budget.clock);
                 let stepped = speed::step_owed(
                     &mut p.sim,
@@ -100,6 +103,7 @@ impl Physics {
                     p.dragging,
                     p.halted,
                     cap,
+                    floor,
                     clock,
                 );
                 let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);

@@ -222,8 +222,11 @@ pub(super) struct Stepped {
 }
 
 /// Run up to `cap` of the ticks owed, under the budget above real time, and
-/// keep the positions before the last tick below it. `forecast` decays an
-/// eighth a tick so one slow tick does not hold the budget down for good.
+/// keep the positions before the last tick below it. The budget never stops
+/// a call short of `floor`, the ticks real time would run in it, so
+/// fast-forward is never slower than 1x. `forecast` decays an eighth a tick
+/// so one slow tick does not hold the budget down for good.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn step_owed(
     sim: &mut Simulation,
     pace: &mut Pace,
@@ -231,6 +234,7 @@ pub(super) fn step_owed(
     dragging: bool,
     halted: bool,
     cap: u32,
+    floor: u32,
     clock: Option<fn() -> Duration>,
 ) -> Stepped {
     let mut out = Stepped::default();
@@ -251,7 +255,7 @@ pub(super) fn step_owed(
         && should_tick(sim, *ticks_remaining, dragging, halted)
     {
         if let (Some(budget), Some(start)) = (budget, start)
-            && out.steps > 0
+            && out.steps >= floor.max(1)
             && (budget.clock)().saturating_sub(start) + pace.forecast > budget.per_frame
         {
             out.budget_bound = true;
@@ -326,6 +330,7 @@ pub(super) fn actor_interval(
         dragging,
         halted,
         u32::MAX,
+        1,
         clock,
     );
     let settling = should_tick(sim, *ticks_remaining, dragging, halted);
@@ -367,6 +372,7 @@ pub(super) fn advance_frame(p: &mut InlinePhysics, view: &mut LayoutView) -> boo
         p.dragging,
         p.halted,
         u32::MAX,
+        1,
         clock,
     );
     let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);

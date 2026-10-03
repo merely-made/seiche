@@ -329,6 +329,15 @@ fn fast_forward_stops_at_the_budget_and_reports_the_speed_it_reached() {
     }
     assert!((physics.pace().effective_speed.unwrap() - 50.0).abs() < 1e-3);
 
+    // A tick dearer than the whole budget: 50x still runs what 1x would in a
+    // three-tick frame, never fewer.
+    let (mut physics, mut view) = costly(20_000, budget, 50.0);
+    let report = physics.advance_elapsed(&mut view, TICK_DURATION * 3, config);
+    assert_eq!((report.steps, report.budget_bound), (3, true));
+    let (mut physics, mut view) = costly(20_000, budget, 1.0);
+    let report = physics.advance_elapsed(&mut view, TICK_DURATION * 3, config);
+    assert_eq!((report.steps, report.budget_bound), (3, false));
+
     // At real time the budget does not apply: the 1x caps govern alone.
     let (mut physics, mut view) = costly(1_000, Duration::ZERO, 1.0);
     let report = physics.advance_elapsed(&mut view, TICK_DURATION * 3, config);
