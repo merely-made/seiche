@@ -18,9 +18,10 @@
 //! - [`StressSpring`] — every pair a spring whose rest length is its graph
 //!   distance: paths unroll to their true length, far things are far
 //!   (Kamada–Kawai).
-//! - [`LinLogForce`] — attraction linear in distance along edges, repulsion
-//!   logarithmic between all, degree-weighted: communities as islands, hubs
-//!   central (LinLog / ForceAtlas2).
+//! - [`LinLogForce`] — ForceAtlas2's force model: attraction linear in
+//!   distance along edges, repulsion `1/d` between all, degree-weighted:
+//!   communities as islands, hubs central. LinLog proper is its attraction
+//!   exponent `0`.
 //! - [`Gravity`] — n-body attraction with mass by degree and an orbital kick:
 //!   the graph as a solar system, never at rest.
 //! - [`ParticleLife`] — each node has a kind; kinds attract or repel by an

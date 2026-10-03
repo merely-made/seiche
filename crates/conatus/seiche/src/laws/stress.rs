@@ -21,7 +21,10 @@ use std::collections::{HashMap, VecDeque};
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::spring;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 use super::node_positions;
 
@@ -105,6 +108,38 @@ impl Force for StressSpring {
                 body.add_force(-pull, true);
             }
         }
+    }
+}
+
+impl Declared for StressSpring {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "stress",
+            Topology::PairList,
+            Kernel::Spring,
+            Class::E,
+            Observable::Stretch,
+        )]
+    }
+
+    /// Kamada–Kawai's stress: `Σ (k/2h²)(d − hL)²`.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let index = layout.index();
+        let unit = f64::from(self.unit_length);
+        Some(
+            self.pairs
+                .iter()
+                .filter_map(|&(a, b, hops)| {
+                    let (i, j) = (*index.get(&a)?, *index.get(&b)?);
+                    let h = f64::from(hops);
+                    Some(spring(
+                        f64::from(self.stiffness) / (h * h),
+                        layout.distance(i, j),
+                        h * unit,
+                    ))
+                })
+                .sum(),
+        )
     }
 }
 

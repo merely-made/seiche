@@ -31,7 +31,10 @@ use numen::{
 };
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Observable, State, Term,
+    Topology,
+};
 
 /// A [`numen::Coupling`] compiled to a [`Force`]: evaluate the field at each
 /// target node's position and apply the response.
@@ -189,6 +192,61 @@ impl Force for CouplingForce {
             // The consumer that owns the family acts on them elsewhere.
             CouplingResponse::Open { .. } => {},
         }
+    }
+}
+
+/// Gradient responses (attract, repel, the wall) are E over the field's
+/// potential; the damping, alignment and advection responses write state
+/// (K). The open tail applies nothing, so it declares nothing.
+impl Declared for CouplingForce {
+    fn terms(&self) -> Vec<Term> {
+        let field = |class| {
+            Term::force(
+                "coupling",
+                Topology::Unary,
+                Kernel::Field,
+                class,
+                Observable::Residual,
+            )
+        };
+        match &self.response {
+            CouplingResponse::AttractToMin
+            | CouplingResponse::RepelFromMax
+            | CouplingResponse::ContainmentWall => vec![field(Class::E)],
+            CouplingResponse::DampenInside { .. } | CouplingResponse::AlignVelocity => {
+                vec![field(Class::K).moving(State::Velocity, Currency::Kinematic)]
+            },
+            CouplingResponse::FlowAdvect => {
+                vec![field(Class::K).moving(State::Position, Currency::Kinematic)]
+            },
+            CouplingResponse::Open { .. } => Vec::new(),
+        }
+    }
+
+    /// `∓s·φ` for attract and repel, `−(s/2)·φ²` inside the wall.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let scalar = self.scalar()?;
+        let s = f64::from(self.strength);
+        let at = |i: usize| {
+            let p = layout.nodes[i].1;
+            f64::from(eval_scalar(scalar, &self.registry, p.x, p.y, 0.0))
+        };
+        let targets: Vec<usize> = {
+            let index = layout.index();
+            self.targets
+                .iter()
+                .filter_map(|k| index.get(k).copied())
+                .collect()
+        };
+        let per_node: Box<dyn Fn(f64) -> f64> = match self.response {
+            CouplingResponse::AttractToMin => Box::new(move |phi| s * phi),
+            CouplingResponse::RepelFromMax => Box::new(move |phi| -s * phi),
+            CouplingResponse::ContainmentWall => {
+                Box::new(move |phi: f64| if phi > 0.0 { -0.5 * s * phi * phi } else { 0.0 })
+            },
+            _ => return None,
+        };
+        Some(targets.into_iter().map(|i| per_node(at(i))).sum())
     }
 }
 

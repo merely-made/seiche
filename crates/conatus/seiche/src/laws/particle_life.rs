@@ -23,7 +23,10 @@ use std::collections::HashMap;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::harmonic;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 use super::{Rng, node_positions};
 
@@ -81,6 +84,27 @@ impl ParticleLife {
         Self::new(kinds, kind_count, matrix)
     }
 
+    /// The same law with the matrix replaced by its symmetric part,
+    /// `(K + Kᵀ)/2`: every pair force then balances, so the law has an energy
+    /// and chasing gives way to settling (the brief's finding F-e).
+    pub fn symmetrized(&self) -> Self {
+        let k = self.kind_count;
+        let mut law = self.clone();
+        for a in 0..k {
+            for b in 0..k {
+                law.matrix[a * k + b] = 0.5 * (self.matrix[a * k + b] + self.matrix[b * k + a]);
+            }
+        }
+        law
+    }
+
+    /// Whether `K` equals its transpose, the one condition under which this
+    /// law is conservative.
+    pub fn is_symmetric(&self) -> bool {
+        let k = self.kind_count;
+        (0..k).all(|a| (0..k).all(|b| self.matrix[a * k + b] == self.matrix[b * k + a]))
+    }
+
     /// The matrix entry for `a` responding to `b`.
     pub fn rule(&self, a: u8, b: u8) -> f32 {
         let (a, b) = (a as usize % self.kind_count, b as usize % self.kind_count);
@@ -128,6 +152,90 @@ impl Force for ParticleLife {
             if let Some(body) = ctx.bodies.get_mut(*handle) {
                 body.add_force(forces[i], true);
             }
+        }
+    }
+}
+
+impl ParticleLife {
+    /// `∫ᵤ¹ f(t) dt` for the response `f` with rule `k`, in units of the
+    /// radius: the pair energy is `−s·R` times this.
+    fn response_integral(&self, k: f64, u: f64) -> f64 {
+        let c = f64::from(self.core);
+        let w = 0.5 * (1.0 - c);
+        let peak = c + w;
+        if u >= 1.0 {
+            0.0
+        } else if u >= peak {
+            k * (1.0 - u).powi(2) / (2.0 * w)
+        } else if u >= c {
+            k * w - k * (u - c).powi(2) / (2.0 * w)
+        } else {
+            k * w - c / 2.0 - u * u / (2.0 * c) + u
+        }
+    }
+}
+
+/// The kind-matrix term is N exactly while the matrix is asymmetric; with a
+/// symmetric matrix it is a pair potential (E) and exposes its energy.
+impl Declared for ParticleLife {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "kind matrix",
+                Topology::KindMatrix {
+                    cutoff: Some(self.radius),
+                },
+                Kernel::Tent,
+                if self.is_symmetric() {
+                    Class::E
+                } else {
+                    Class::N
+                },
+                Observable::Energy,
+            ),
+            Term::force(
+                "centring",
+                Topology::Unary,
+                Kernel::Harmonic,
+                Class::E,
+                Observable::Spread,
+            ),
+        ]
+    }
+
+    fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let mut only = self.clone();
+        match term {
+            0 => only.gravity = 0.0,
+            1 => only.strength = 0.0,
+            _ => return None,
+        }
+        Some(Box::new(only))
+    }
+
+    fn energy(&self, term: usize, layout: &Layout<'_>) -> Option<f64> {
+        match term {
+            0 if self.is_symmetric() => {
+                let kinds: Vec<u8> = layout
+                    .nodes
+                    .iter()
+                    .map(|(key, _)| self.kind_of.get(key).copied().unwrap_or(0))
+                    .collect();
+                let (s, r) = (f64::from(self.strength), f64::from(self.radius));
+                let mut energy = 0.0;
+                for i in 0..kinds.len() {
+                    for j in (i + 1)..kinds.len() {
+                        let d = layout.distance(i, j);
+                        let k = f64::from(self.rule(kinds[i], kinds[j]));
+                        energy -= s * r * self.response_integral(k, d / r);
+                    }
+                }
+                Some(energy)
+            },
+            1 => Some(harmonic(f64::from(self.gravity), layout, |_| {
+                Some((0.0, 0.0))
+            })),
+            _ => None,
         }
     }
 }

@@ -16,7 +16,9 @@
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Observable, State, Term, Topology,
+};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Hold;
@@ -29,6 +31,23 @@ impl Force for Hold {
                 body.set_angvel(0.0, false);
             }
         }
+    }
+}
+
+/// A projection (class K): velocity written to zero, so the picture is the
+/// arrangement's or the hand's.
+impl Declared for Hold {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "hold",
+                Topology::Unary,
+                Kernel::VelocityWrite,
+                Class::K,
+                Observable::Residual,
+            )
+            .moving(State::Velocity, Currency::Kinematic),
+        ]
     }
 }
 

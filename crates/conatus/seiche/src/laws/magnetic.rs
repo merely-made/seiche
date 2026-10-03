@@ -18,7 +18,10 @@
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::{floored_inverse, spring};
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 use super::node_positions;
 
@@ -107,6 +110,85 @@ impl Force for MagneticSpring {
             if let Some(body) = ctx.bodies.get_mut(*handle) {
                 body.add_force(forces[i], true);
             }
+        }
+    }
+}
+
+/// The repulsion and the spring are E. The needle is N as written: its push
+/// is a gradient times a non-constant length factor, which has a curl (the
+/// brief's finding F-d; declared as it is, ruled 2026-10-02, F8).
+impl Declared for MagneticSpring {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "repulsion",
+                Topology::AllPairs { cutoff: None },
+                Kernel::Repulsion { exponent: -2.0 },
+                Class::E,
+                Observable::Overlaps,
+            ),
+            Term::force(
+                "spring",
+                Topology::Edges,
+                Kernel::Spring,
+                Class::E,
+                Observable::PairLength,
+            ),
+            Term::force(
+                "needle",
+                Topology::Edges,
+                Kernel::Needle,
+                Class::N,
+                Observable::FieldAlignment,
+            ),
+        ]
+    }
+
+    fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let only = match term {
+            0 => Self {
+                stiffness: 0.0,
+                torque: 0.0,
+                ..*self
+            },
+            1 => Self {
+                repulsion: 0.0,
+                torque: 0.0,
+                ..*self
+            },
+            2 => Self {
+                repulsion: 0.0,
+                stiffness: 0.0,
+                ..*self
+            },
+            _ => return None,
+        };
+        Some(Box::new(only))
+    }
+
+    fn energy(&self, term: usize, layout: &Layout<'_>) -> Option<f64> {
+        match term {
+            0 => {
+                let (s, m) = (f64::from(self.repulsion), f64::from(self.min_distance));
+                let mut energy = 0.0;
+                for i in 0..layout.nodes.len() {
+                    for j in (i + 1)..layout.nodes.len() {
+                        energy += floored_inverse(s, layout.distance(i, j), m);
+                    }
+                }
+                Some(energy)
+            },
+            1 => {
+                let (k, rest) = (f64::from(self.stiffness), f64::from(self.rest_length));
+                Some(
+                    layout
+                        .edge_indices()
+                        .into_iter()
+                        .map(|(i, j)| spring(k, layout.distance(i, j), rest))
+                        .sum(),
+                )
+            },
+            _ => None,
         }
     }
 }

@@ -19,7 +19,10 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, State,
+    Term, Topology,
+};
 
 use super::{Rng, node_positions};
 
@@ -168,6 +171,28 @@ impl Force for Anneal {
             }
         }
         *temperature *= self.cooling;
+    }
+}
+
+/// A realization rather than a kernel (class K): Metropolis moves over an
+/// energy with Springs' functional form (the brief's finding F-b), exposed
+/// so a receipt can watch it fall.
+impl Declared for Anneal {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "annealing",
+                Topology::AllPairs { cutoff: None },
+                Kernel::PositionWrite,
+                Class::K,
+                Observable::Energy,
+            )
+            .moving(State::Position, Currency::Kinematic),
+        ]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        Some(f64::from(Anneal::energy(self, layout.nodes, layout.edges)))
     }
 }
 
