@@ -36,6 +36,9 @@ use crate::{Force, ForceContext, NODE_BODY_RADIUS, NodeKey};
 
 use super::node_positions;
 
+mod grid;
+pub use grid::DensityGrid;
+
 /// The square of world space the field covers, walled on every side.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DensityDomain {
@@ -67,209 +70,9 @@ pub trait DensityMedium: Send + std::fmt::Debug {
     fn cell(&self) -> f32;
     /// The coefficient of variation of the field over its cells.
     fn field_cv(&self) -> f32;
-}
-
-/// The CPU tier: a square grid of cell-centred densities with walls, splatted
-/// by cloud-in-cell weights and diffused by Jacobi sweeps of the implicit
-/// step `(I − α∇²) u' = u`.
-#[derive(Clone, Debug)]
-pub struct DensityGrid {
-    resolution: usize,
-    /// Jacobi sweeps per unit of `α` (cells²) in an advance, at least four.
-    pub sweeps_per_alpha: f32,
-    domain: DensityDomain,
-    /// The field's total at the flow's start: the walls conserve it, and a
-    /// truncated Jacobi solve that drifts from it is rescaled back.
-    total: f32,
-    source: Vec<f32>,
-    field: Vec<f32>,
-    scratch: Vec<f32>,
-}
-
-impl DensityGrid {
-    /// A `resolution`² grid.
-    pub fn new(resolution: usize) -> Self {
-        let resolution = resolution.max(4);
-        let cells = resolution * resolution;
-        Self {
-            resolution,
-            sweeps_per_alpha: 6.0,
-            domain: DensityDomain {
-                min: Vector::ZERO,
-                side: 1.0,
-            },
-            total: 0.0,
-            source: vec![0.0; cells],
-            field: vec![0.0; cells],
-            scratch: vec![0.0; cells],
-        }
-    }
-
-    pub fn resolution(&self) -> usize {
-        self.resolution
-    }
-
-    /// The splatted density, row-major (`y * n + x`), mass per world area.
-    pub fn source(&self) -> &[f32] {
-        &self.source
-    }
-
-    /// The field, row-major, mass per world area.
-    pub fn field(&self) -> &[f32] {
-        &self.field
-    }
-
-    /// A position's continuous cell coordinate: cell `i`'s centre is `i`.
-    fn cell_coord(&self, p: Vector) -> (f32, f32) {
-        let h = self.cell();
-        (
-            (p.x - self.domain.min.x) / h - 0.5,
-            (p.y - self.domain.min.y) / h - 0.5,
-        )
-    }
-
-    /// The four cloud-in-cell neighbours of a cell coordinate and their
-    /// weights, clamped at the walls.
-    fn corners(&self, gx: f32, gy: f32) -> [(usize, f32); 4] {
-        let last = (self.resolution - 1) as f32;
-        let gx = gx.clamp(0.0, last);
-        let gy = gy.clamp(0.0, last);
-        let (x0, y0) = (gx.floor() as usize, gy.floor() as usize);
-        let (fx, fy) = (gx - x0 as f32, gy - y0 as f32);
-        let x1 = (x0 + 1).min(self.resolution - 1);
-        let y1 = (y0 + 1).min(self.resolution - 1);
-        let n = self.resolution;
-        [
-            (y0 * n + x0, (1.0 - fx) * (1.0 - fy)),
-            (y0 * n + x1, fx * (1.0 - fy)),
-            (y1 * n + x0, (1.0 - fx) * fy),
-            (y1 * n + x1, fx * fy),
-        ]
-    }
-
-    /// Splat `particles` over `domain` onto the source grid, mass per area.
-    pub fn splat(&mut self, domain: DensityDomain, particles: &[(Vector, f32)]) {
-        self.domain = domain;
-        self.source.iter_mut().for_each(|c| *c = 0.0);
-        let per_area = 1.0 / (self.cell() * self.cell());
-        for &(p, mass) in particles {
-            let (gx, gy) = self.cell_coord(p);
-            for (cell, w) in self.corners(gx, gy) {
-                self.source[cell] += mass * w * per_area;
-            }
-        }
-    }
-
-    /// `iterations` Jacobi sweeps of `(I − α∇²) u = source` with mirror
-    /// (wall) edges, from the current field. `alpha` is in cells².
-    pub fn diffuse(&mut self, alpha: f32, iterations: usize) {
-        let n = self.resolution;
-        for _ in 0..iterations {
-            for y in 0..n {
-                for x in 0..n {
-                    let mut sum = 0.0;
-                    let mut inside = 0.0;
-                    if x > 0 {
-                        sum += self.field[y * n + x - 1];
-                        inside += 1.0;
-                    }
-                    if x + 1 < n {
-                        sum += self.field[y * n + x + 1];
-                        inside += 1.0;
-                    }
-                    if y > 0 {
-                        sum += self.field[(y - 1) * n + x];
-                        inside += 1.0;
-                    }
-                    if y + 1 < n {
-                        sum += self.field[(y + 1) * n + x];
-                        inside += 1.0;
-                    }
-                    self.scratch[y * n + x] =
-                        (self.source[y * n + x] + alpha * sum) / (1.0 + alpha * inside);
-                }
-            }
-            std::mem::swap(&mut self.field, &mut self.scratch);
-        }
-    }
-
-    /// The field at a cell, the wall's mirror outside.
-    fn at(&self, x: i32, y: i32) -> f32 {
-        let n = self.resolution as i32;
-        let (cx, cy) = (x.clamp(0, n - 1), y.clamp(0, n - 1));
-        self.field[(cy * n + cx) as usize]
-    }
-
-    /// The field and its gradient (per world unit) at `p`: the central
-    /// difference at each cell centre, interpolated bilinearly with the same
-    /// weights the splat used, so a lone particle feels no flow of its own.
-    pub fn sample(&self, p: Vector) -> (f32, Vector) {
-        let (gx, gy) = self.cell_coord(p);
-        let n = self.resolution;
-        let mut value = 0.0;
-        let mut grad = Vector::ZERO;
-        for (cell, w) in self.corners(gx, gy) {
-            let (x, y) = ((cell % n) as i32, (cell / n) as i32);
-            value += w * self.field[cell];
-            grad += w * Vector::new(
-                self.at(x + 1, y) - self.at(x - 1, y),
-                self.at(x, y + 1) - self.at(x, y - 1),
-            );
-        }
-        (value, grad / (2.0 * self.cell()))
-    }
-
-    fn sweeps(&self, alpha: f32) -> usize {
-        ((alpha * self.sweeps_per_alpha).ceil() as usize).clamp(4, 4_000)
-    }
-}
-
-impl DensityMedium for DensityGrid {
-    fn begin(
-        &mut self,
-        domain: DensityDomain,
-        particles: &[(Vector, f32)],
-        blur: f32,
-        background: f32,
-    ) {
-        self.splat(domain, particles);
-        self.source.iter_mut().for_each(|c| *c += background);
-        self.total = self.source.iter().sum();
-        self.field.copy_from_slice(&self.source);
-        let alpha = (blur / self.cell()).powi(2);
-        // Converged once: the sweeps a fresh (not warm) solve needs.
-        self.diffuse(alpha, self.sweeps(alpha).max((8.0 * alpha) as usize));
-    }
-
-    fn advance(&mut self, length: f32) {
-        let alpha = (length / self.cell()).powi(2);
-        self.source.copy_from_slice(&self.field);
-        self.diffuse(alpha, self.sweeps(alpha));
-        let now: f32 = self.field.iter().sum();
-        if now > 0.0 {
-            let scale = self.total / now;
-            self.field.iter_mut().for_each(|u| *u *= scale);
-        }
-    }
-
-    fn flow(&self, positions: &[Vector], out: &mut Vec<Vector>) {
-        out.clear();
-        for &p in positions {
-            let (rho, grad) = self.sample(p);
-            out.push(-grad / rho.max(f32::MIN_POSITIVE));
-        }
-    }
-
-    fn cell(&self) -> f32 {
-        self.domain.side / self.resolution as f32
-    }
-
-    fn field_cv(&self) -> f32 {
-        let n = self.field.len() as f32;
-        let mean = self.field.iter().sum::<f32>() / n;
-        let var = self.field.iter().map(|u| (u - mean).powi(2)).sum::<f32>() / n;
-        if mean > 0.0 { var.sqrt() / mean } else { 0.0 }
-    }
+    /// Pull the field toward the nodes' fresh splat (plus `background`) by
+    /// `weight` (zero leaves it, one replaces it): continuous re-entry.
+    fn renew(&mut self, particles: &[(Vector, f32)], weight: f32, background: f32);
 }
 
 /// A flow under way: its walls, diffusivity, pass, and the diagnostics.
@@ -304,6 +107,11 @@ pub struct DensityPass {
     /// The coefficient of variation of the nodes' field splatted afresh
     /// where the pass left them: how uneven the layout still is.
     pub field_cv: f32,
+    /// Mean net distance the flow itself carried the moving nodes, and the
+    /// mean distance between that and where they ended (what rapier and
+    /// contacts moved them between the flow's writes), both in spacings.
+    pub flow_shift: f32,
+    pub residual: f32,
 }
 
 /// When repeated passes stop.
@@ -323,8 +131,10 @@ pub enum DensityStop {
 struct DensityState {
     medium: Box<dyn DensityMedium>,
     flow: Option<DensityFlowState>,
-    /// Where the nodes stood when this pass began.
+    /// Where the nodes stood when this pass began, and the net distance the
+    /// flow has carried each since.
     pass_start: Vec<Vector>,
+    flow_moved: Vec<Vector>,
     history: Vec<DensityPass>,
     /// Passes in a row that met the stop test.
     calm: u32,
@@ -358,6 +168,25 @@ pub struct Density {
     /// The pass cap: the fallback that ends the passes if the test never
     /// does. One is Gastner and Newman's single flow.
     pub max_passes: u32,
+    /// Each pass's diffusivity as a fraction of the last one's: below one,
+    /// later passes carry the nodes less (an annealed flow). One by default.
+    pub decay: f32,
+    /// Zero each moved body's velocity after the flow writes it, so rapier's
+    /// integration carries nothing between writes. Off by default.
+    pub quench: bool,
+    /// How far inside the walls a node's centre is held, world units: a
+    /// body radius by default, so a body never crosses a wall.
+    pub wall_inset: f32,
+    /// Over-relaxation at each pass's end: a moving node is placed at its
+    /// start plus this times the pass's displacement before the next splat.
+    /// One is no over-relaxation, the default.
+    pub relax: f32,
+    /// Continuous renewal instead of passes: every tick the field relaxes
+    /// toward the nodes' current splat, never reset, with the time constant
+    /// whose steady smoothing `sqrt(D·τ)` is this many node spacings;
+    /// `seconds` then only sets the stop test's window. `None`, the default,
+    /// is repeated passes.
+    pub renew: Option<f32>,
 }
 
 impl Density {
@@ -378,6 +207,7 @@ impl Density {
                 medium,
                 flow: None,
                 pass_start: Vec::new(),
+                flow_moved: Vec::new(),
                 history: Vec::new(),
                 calm: 0,
             }),
@@ -391,6 +221,11 @@ impl Density {
             stop: DensityStop::Cap,
             patience: 1,
             max_passes: 1,
+            decay: 1.0,
+            quench: false,
+            wall_inset: NODE_BODY_RADIUS,
+            relax: 1.0,
+            renew: None,
         }
     }
 
@@ -434,7 +269,11 @@ impl Density {
         let carried = state.flow;
         state.flow = Some(DensityFlowState {
             domain,
-            diffusivity: 4.6 * side * side / (std::f32::consts::PI.powi(2) * self.seconds.max(0.1)),
+            diffusivity: 4.6 * side * side / (std::f32::consts::PI.powi(2) * self.seconds.max(0.1))
+                * self
+                    .decay
+                    .clamp(0.0, 1.0)
+                    .powi(pass.saturating_sub(1) as i32),
             spacing,
             elapsed: 0.0,
             pass,
@@ -445,18 +284,22 @@ impl Density {
             last_speed: 0.0,
         });
         state.pass_start = particles.iter().map(|(p, _)| *p).collect();
+        state.flow_moved = vec![Vector::ZERO; particles.len()];
     }
 
     /// Close pass `pass`, after the next one has splatted the nodes where
     /// it left them: record it, apply the stop test, and say whether the
     /// passes go on.
-    fn close_pass(&self, state: &mut DensityState, pass: u32, shift: f32) -> bool {
+    fn close_pass(&self, state: &mut DensityState, pass: u32, moved: PassMotion) -> bool {
         let field_cv = state.medium.field_cv();
         let before = state.history.last().copied();
+        let shift = moved.shift;
         state.history.push(DensityPass {
             pass,
             shift,
             field_cv,
+            flow_shift: moved.flow_shift,
+            residual: moved.residual,
         });
         let calm = match self.stop {
             DensityStop::Shift(limit) => shift < limit,
@@ -467,6 +310,37 @@ impl Density {
         };
         state.calm = if calm { state.calm + 1 } else { 0 };
         state.calm < self.patience.max(1) && pass < self.max_passes.max(1)
+    }
+}
+
+/// A finished pass's motion, in mean node spacings: the observed shift, the
+/// flow's own share of it, and the rest.
+#[derive(Clone, Copy, Debug)]
+struct PassMotion {
+    shift: f32,
+    flow_shift: f32,
+    residual: f32,
+}
+
+impl PassMotion {
+    fn of(positions: &[Vector], state: &DensityState, dynamic: &[bool], spacing: f32) -> Self {
+        let (mut shift, mut flow_shift, mut residual, mut n) = (0.0, 0.0, 0.0, 0usize);
+        for (i, (p, moves)) in positions.iter().zip(dynamic).enumerate() {
+            let (Some(q), true) = (state.pass_start.get(i), *moves) else {
+                continue;
+            };
+            let flow = state.flow_moved.get(i).copied().unwrap_or(Vector::ZERO);
+            shift += (*p - *q).length();
+            flow_shift += flow.length();
+            residual += (*p - *q - flow).length();
+            n += 1;
+        }
+        let scale = 1.0 / (n.max(1) as f32 * spacing.max(1e-3));
+        Self {
+            shift: shift * scale,
+            flow_shift: flow_shift * scale,
+            residual: residual * scale,
+        }
     }
 }
 
@@ -498,17 +372,34 @@ impl Force for Density {
                 self.begin(&mut state, &particles(), 1);
             },
             Some(flow) if flow.elapsed >= self.seconds - 1e-4 => {
-                let moved: Vec<f32> = positions
+                let moved = PassMotion::of(&positions, &state, &dynamic, flow.spacing);
+                if self.relax != 1.0 && state.pass_start.len() == positions.len() {
+                    let lo = flow.domain.min + Vector::splat(self.wall_inset);
+                    let hi = flow.domain.min + Vector::splat(flow.domain.side - self.wall_inset);
+                    for ((p, q), moves) in positions.iter_mut().zip(&state.pass_start).zip(&dynamic)
+                    {
+                        if *moves {
+                            *p = (*q + (*p - *q) * self.relax).clamp(lo, hi.max(lo));
+                        }
+                    }
+                }
+                let relaxed: Vec<(Vector, f32)> = positions
                     .iter()
-                    .zip(&state.pass_start)
-                    .zip(&dynamic)
-                    .filter(|(_, moves)| **moves)
-                    .map(|((p, q), _)| (*p - *q).length())
+                    .zip(&nodes)
+                    .map(|(p, (k, _, _))| (*p, self.mass(k)))
                     .collect();
-                let shift =
-                    moved.iter().sum::<f32>() / moved.len().max(1) as f32 / flow.spacing.max(1e-3);
-                self.begin(&mut state, &particles(), flow.pass + 1);
-                let more = self.close_pass(&mut state, flow.pass, shift);
+                if self.renew.is_some() {
+                    // A window, not a pass: the field carries on.
+                    let mut next = flow;
+                    next.elapsed = 0.0;
+                    next.pass = flow.pass + 1;
+                    state.flow = Some(next);
+                    state.pass_start = positions.clone();
+                    state.flow_moved = vec![Vector::ZERO; positions.len()];
+                } else {
+                    self.begin(&mut state, &relaxed, flow.pass + 1);
+                }
+                let more = self.close_pass(&mut state, flow.pass, moved);
                 if dragging {
                     // A held node keeps the passes going: it is still moving.
                     state.calm = 0;
@@ -525,10 +416,11 @@ impl Force for Density {
             Some(_) => {},
         }
         let mut flow = state.flow.expect("a flow under way");
-        let lo = flow.domain.min + Vector::splat(NODE_BODY_RADIUS);
-        let hi = flow.domain.min + Vector::splat(flow.domain.side - NODE_BODY_RADIUS);
+        let lo = flow.domain.min + Vector::splat(self.wall_inset);
+        let hi = flow.domain.min + Vector::splat(flow.domain.side - self.wall_inset);
         let reach = self.cfl * state.medium.cell();
         let d = flow.diffusivity;
+        let tick_start = positions.clone();
         let mut velocity = Vec::with_capacity(positions.len());
         let (mut remaining, mut substeps, mut fastest) = (dt, 0u32, 0.0f32);
         while remaining > 1e-7 {
@@ -558,6 +450,28 @@ impl Force for Density {
             }
             remaining -= tau;
         }
+        if state.flow_moved.len() == positions.len() {
+            for ((acc, (p, q)), moves) in state
+                .flow_moved
+                .iter_mut()
+                .zip(positions.iter().zip(&tick_start))
+                .zip(&dynamic)
+            {
+                if *moves {
+                    *acc += *p - *q;
+                }
+            }
+        }
+        if let Some(length) = self.renew {
+            let tau = (length * flow.spacing).powi(2) / flow.diffusivity.max(f32::MIN_POSITIVE);
+            let current: Vec<(Vector, f32)> = positions
+                .iter()
+                .zip(&nodes)
+                .map(|(p, (k, _, _))| (*p, self.mass(k)))
+                .collect();
+            let background = self.background / self.area_per_mass;
+            state.medium.renew(&current, dt / tau.max(dt), background);
+        }
         flow.elapsed += dt;
         flow.last_substeps = substeps;
         flow.max_substeps_seen = flow.max_substeps_seen.max(substeps);
@@ -567,6 +481,9 @@ impl Force for Density {
         for (((_, handle, _), p), moves) in nodes.iter().zip(positions).zip(dynamic) {
             if moves && let Some(body) = ctx.bodies.get_mut(*handle) {
                 body.set_translation(p, true);
+                if self.quench {
+                    body.set_linvel(Vector::ZERO, true);
+                }
             }
         }
     }
