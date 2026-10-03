@@ -174,19 +174,6 @@ pub struct Density {
     /// The fewest passes before the stop test may end them: earlier passes
     /// run whatever the test says. Zero by default.
     pub min_passes: u32,
-    /// Each pass's diffusivity as a fraction of the last one's: below one,
-    /// later passes carry the nodes less (an annealed flow). One by default.
-    pub decay: f32,
-    /// Zero each moved body's velocity after the flow writes it, so rapier's
-    /// integration carries nothing between writes. Off by default.
-    pub quench: bool,
-    /// How far inside the walls a node's centre is held, world units: a
-    /// body radius by default, so a body never crosses a wall.
-    pub wall_inset: f32,
-    /// Over-relaxation at each pass's end: a moving node is placed at its
-    /// start plus this times the pass's displacement before the next splat.
-    /// One is no over-relaxation, the default.
-    pub relax: f32,
     /// Continuous renewal instead of passes: every tick the field relaxes
     /// toward the nodes' current splat, never reset, with the time constant
     /// whose steady smoothing `sqrt(D·τ)` is this many node spacings;
@@ -228,10 +215,6 @@ impl Density {
             patience: 1,
             max_passes: 1,
             min_passes: 0,
-            decay: 1.0,
-            quench: false,
-            wall_inset: NODE_BODY_RADIUS,
-            relax: 1.0,
             renew: None,
         }
     }
@@ -276,11 +259,7 @@ impl Density {
         let carried = state.flow;
         state.flow = Some(DensityFlowState {
             domain,
-            diffusivity: 4.6 * side * side / (std::f32::consts::PI.powi(2) * self.seconds.max(0.1))
-                * self
-                    .decay
-                    .clamp(0.0, 1.0)
-                    .powi(pass.saturating_sub(1) as i32),
+            diffusivity: 4.6 * side * side / (std::f32::consts::PI.powi(2) * self.seconds.max(0.1)),
             spacing,
             elapsed: 0.0,
             pass,
@@ -381,17 +360,7 @@ impl Force for Density {
             },
             Some(flow) if flow.elapsed >= self.seconds - 1e-4 => {
                 let moved = PassMotion::of(&positions, &state, &dynamic, flow.spacing);
-                if self.relax != 1.0 && state.pass_start.len() == positions.len() {
-                    let lo = flow.domain.min + Vector::splat(self.wall_inset);
-                    let hi = flow.domain.min + Vector::splat(flow.domain.side - self.wall_inset);
-                    for ((p, q), moves) in positions.iter_mut().zip(&state.pass_start).zip(&dynamic)
-                    {
-                        if *moves {
-                            *p = (*q + (*p - *q) * self.relax).clamp(lo, hi.max(lo));
-                        }
-                    }
-                }
-                let relaxed: Vec<(Vector, f32)> = positions
+                let current: Vec<(Vector, f32)> = positions
                     .iter()
                     .zip(&nodes)
                     .map(|(p, (k, _, _))| (*p, self.mass(k)))
@@ -405,7 +374,7 @@ impl Force for Density {
                     state.pass_start = positions.clone();
                     state.flow_moved = vec![Vector::ZERO; positions.len()];
                 } else {
-                    self.begin(&mut state, &relaxed, flow.pass + 1);
+                    self.begin(&mut state, &current, flow.pass + 1);
                 }
                 let more = self.close_pass(&mut state, flow.pass, moved);
                 if dragging {
@@ -424,8 +393,8 @@ impl Force for Density {
             Some(_) => {},
         }
         let mut flow = state.flow.expect("a flow under way");
-        let lo = flow.domain.min + Vector::splat(self.wall_inset);
-        let hi = flow.domain.min + Vector::splat(flow.domain.side - self.wall_inset);
+        let lo = flow.domain.min + Vector::splat(NODE_BODY_RADIUS);
+        let hi = flow.domain.min + Vector::splat(flow.domain.side - NODE_BODY_RADIUS);
         let reach = self.cfl * state.medium.cell();
         let d = flow.diffusivity;
         let tick_start = positions.clone();
@@ -489,9 +458,6 @@ impl Force for Density {
         for (((_, handle, _), p), moves) in nodes.iter().zip(positions).zip(dynamic) {
             if moves && let Some(body) = ctx.bodies.get_mut(*handle) {
                 body.set_translation(p, true);
-                if self.quench {
-                    body.set_linvel(Vector::ZERO, true);
-                }
             }
         }
     }
@@ -506,7 +472,8 @@ impl Force for Density {
 /// Density in the dynamics grammar's words: a medium the nodes are carried
 /// on, by diffusion, written rather than forced (so class K, kinematic), its
 /// transport weighted by each node's mass, read by mass against area.
-/// *Reading, not ruled*: the grammar plan's suggested declaration.
+/// Ruled 2026-10-03, "Keep: K, field, Wasserstein" (physics catalog plan,
+/// "Density's declaration").
 impl Declared for Density {
     fn terms(&self) -> Vec<Term> {
         vec![
