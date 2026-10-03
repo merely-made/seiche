@@ -30,10 +30,33 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct PhysicsDevice {
     client: ResidentClient,
+    /// What the host's adapter offers and its device holds, when the device
+    /// came from the host's handles.
+    features: Option<DeviceFeatures>,
     cell_threshold: usize,
     threshold: usize,
     max_stale_steps: u32,
     counts: Arc<DeviceCounts>,
+}
+
+/// The wgpu features of a host's adapter and of the device it booted, for a
+/// tenant that must know what the device lacks (the Meaning model's CubeCL
+/// times kernels on the device whenever the adapter has timestamp queries;
+/// dynamics grammar plan, G2, F31).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeviceFeatures {
+    pub adapter: wgpu::Features,
+    pub device: wgpu::Features,
+}
+
+impl DeviceFeatures {
+    /// Whether the adapter offers timestamp queries the device was booted
+    /// without: the case in which CubeCL, which decides device timing from
+    /// the adapter, fails its first timed launch.
+    pub fn lacks_adapter_timestamps(&self) -> bool {
+        let timestamps = wgpu::Features::TIMESTAMP_QUERY;
+        self.adapter.contains(timestamps) && !self.device.contains(timestamps)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -47,6 +70,7 @@ impl PhysicsDevice {
     pub fn new(client: ResidentClient) -> Self {
         Self {
             client,
+            features: None,
             cell_threshold: DEFAULT_CELL_THRESHOLD,
             threshold: DEFAULT_GPU_REPULSION_THRESHOLD,
             max_stale_steps: DEFAULT_MAX_STALE_STEPS,
@@ -61,7 +85,20 @@ impl PhysicsDevice {
         device: wgpu::Device,
         queue: wgpu::Queue,
     ) -> Self {
-        Self::new(ResidentClient::from_wgpu(instance, adapter, device, queue))
+        let features = DeviceFeatures {
+            adapter: adapter.features(),
+            device: device.features(),
+        };
+        Self {
+            features: Some(features),
+            ..Self::new(ResidentClient::from_wgpu(instance, adapter, device, queue))
+        }
+    }
+
+    /// The adapter's and the device's features, when this device came from
+    /// the host's handles ([`Self::from_wgpu`]).
+    pub fn features(&self) -> Option<DeviceFeatures> {
+        self.features
     }
 
     /// Node count at or above which a lane walks the cell list rather than
