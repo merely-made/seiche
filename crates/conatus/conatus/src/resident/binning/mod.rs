@@ -23,10 +23,9 @@
 //! the variant whose result has a leading zero, so a counts array with one
 //! trailing zero scans into cell starts whose last entry is the total.
 
-use cubecl::client::ComputeClient;
+use cubecl::client::Client;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use cubecl::wgpu::WgpuRuntime;
 
 /// Threads per workgroup for every binning pass, and the scan's block width.
 pub const WORKGROUP_SIZE: u32 = 256;
@@ -247,7 +246,7 @@ pub fn scatter(
 /// Exclusive scan of `data` in place (`len` elements), staged as upstream's
 /// `PrefixSumWorkspace`: one auxiliary level per factor of
 /// [`WORKGROUP_SIZE`], the last of length one.
-pub fn exclusive_scan(client: &ComputeClient<WgpuRuntime>, data: &Handle, len: usize) {
+pub fn exclusive_scan(client: &Client, data: &Handle, len: usize) {
     let width = WORKGROUP_SIZE as usize;
     let mut ngroups = vec![len.div_ceil(width).max(1)];
     let mut stages = Vec::new();
@@ -262,7 +261,7 @@ pub fn exclusive_scan(client: &ComputeClient<WgpuRuntime>, data: &Handle, len: u
     let dim = CubeDim::new_1d(WORKGROUP_SIZE);
     let sweep =
         |target: &Handle, target_len: usize, aux: &Handle, aux_len: usize, groups: usize| unsafe {
-            scan_sweep::launch_unchecked::<WgpuRuntime>(
+            scan_sweep::launch_unchecked(
                 client,
                 CubeCount::Static(groups as u32, 1, 1),
                 dim,
@@ -273,7 +272,7 @@ pub fn exclusive_scan(client: &ComputeClient<WgpuRuntime>, data: &Handle, len: u
             );
         };
     let add = |target: &Handle, target_len: usize, aux: &Handle, aux_len: usize, groups: usize| unsafe {
-        scan_add::launch_unchecked::<WgpuRuntime>(
+        scan_add::launch_unchecked(
             client,
             CubeCount::Static(groups as u32, 1, 1),
             dim,
@@ -313,7 +312,7 @@ pub fn exclusive_scan(client: &ComputeClient<WgpuRuntime>, data: &Handle, len: u
 /// (`cells + 1` entries, the last the total) and the positions sorted by
 /// cell, both on `client`.
 pub fn bin(
-    client: &ComputeClient<WgpuRuntime>,
+    client: &Client,
     positions: &Handle,
     n: usize,
     grid: Grid,
@@ -329,14 +328,14 @@ pub fn bin(
     let cursor = client.empty(cells * 4);
     let sorted = client.empty(n * STRIDE * 4);
     unsafe {
-        clear::launch_unchecked::<WgpuRuntime>(
+        clear::launch_unchecked(
             client,
             groups(cells + 1),
             dim,
             BufferArg::from_raw_parts(starts.clone(), cells + 1),
             (cells + 1) as u32,
         );
-        count::launch_unchecked::<WgpuRuntime>(
+        count::launch_unchecked(
             client,
             groups(n),
             dim,
@@ -352,7 +351,7 @@ pub fn bin(
     }
     exclusive_scan(client, &starts, cells + 1);
     unsafe {
-        cursors::launch_unchecked::<WgpuRuntime>(
+        cursors::launch_unchecked(
             client,
             groups(cells),
             dim,
@@ -360,7 +359,7 @@ pub fn bin(
             BufferArg::from_raw_parts(cursor.clone(), cells),
             cells as u32,
         );
-        scatter::launch_unchecked::<WgpuRuntime>(
+        scatter::launch_unchecked(
             client,
             groups(n),
             dim,
