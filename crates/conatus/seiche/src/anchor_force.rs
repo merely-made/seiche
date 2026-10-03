@@ -22,7 +22,10 @@
 use rapier2d::prelude::*;
 use std::collections::HashMap;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::spring;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 /// Default pull toward an anchor, in force per unit of offset. Chosen so a node
 /// displaced by roughly a node-width returns without visible overshoot at the
@@ -102,6 +105,41 @@ impl Force for AnchorSpring {
                 body.add_force(pull, true);
             }
         }
+    }
+}
+
+/// An encourage-class target term: a spring to each node's slot with a
+/// slack, class E.
+impl Declared for AnchorSpring {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "anchor",
+            Topology::Unary,
+            Kernel::Spring,
+            Class::E,
+            Observable::Residual,
+        )]
+    }
+
+    /// `(k/2)(|x − slot| − slack)²` beyond the slack.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        if self.stiffness <= 0.0 {
+            return Some(0.0);
+        }
+        let (k, slack) = (f64::from(self.stiffness), f64::from(self.slack));
+        Some(
+            layout
+                .nodes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (key, _))| {
+                    let anchor = self.anchors.get(key)?;
+                    let (x, y) = layout.at(i);
+                    let d = (f64::from(anchor.x) - x).hypot(f64::from(anchor.y) - y);
+                    Some(if d > slack { spring(k, d, slack) } else { 0.0 })
+                })
+                .sum(),
+        )
     }
 }
 

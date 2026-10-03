@@ -178,6 +178,32 @@ pub enum SceneField {
     },
 }
 
+impl SceneField {
+    /// What the field applies to the scene's dynamic bodies: the swirl is a
+    /// curl (N), the inward pull a gradient of distance (E).
+    pub fn terms(&self) -> Vec<crate::Term> {
+        use crate::{Class, Kernel, Observable, Term, Topology};
+        match self {
+            SceneField::Vortex { .. } => vec![
+                Term::force(
+                    "swirl",
+                    Topology::Unary,
+                    Kernel::Vortex,
+                    Class::N,
+                    Observable::Energy,
+                ),
+                Term::force(
+                    "inward pull",
+                    Topology::Unary,
+                    Kernel::Vortex,
+                    Class::E,
+                    Observable::Residual,
+                ),
+            ],
+        }
+    }
+}
+
 /// A continuous body spawner: emits dynamic scene bodies over time (a fountain, rain, a sand
 /// stream), reaping each after `lifetime_secs` so the live count stays bounded. The "scene is alive
 /// over time" capability beyond one-shot placement; keeps the actor ticking while present. Added via

@@ -19,7 +19,11 @@ use std::collections::HashMap;
 use rapier2d::prelude::*;
 
 use crate::laws::{degrees, node_positions};
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::floored_log;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable, Term,
+    Topology,
+};
 
 #[derive(Clone, Debug)]
 pub struct DegreeRepulsion {
@@ -93,6 +97,65 @@ impl Force for DegreeRepulsion {
                 body.add_force(forces[i], true);
             }
         }
+    }
+}
+
+impl DegreeRepulsion {
+    /// Each node's weight: the host's, or `ln(degree + 1)`.
+    fn weights_at(&self, layout: &Layout<'_>) -> Vec<f64> {
+        let degree = degrees(layout.edges);
+        layout
+            .nodes
+            .iter()
+            .map(|(key, _)| match &self.weights {
+                Some(map) => f64::from(map.get(key).copied().unwrap_or(0.0).max(0.0)),
+                None => f64::from(((degree.get(key).copied().unwrap_or(0) + 1) as f32).ln()),
+            })
+            .collect()
+    }
+}
+
+/// Each side is pushed by the other's weight alone, so the pair does not
+/// balance; it is the gradient of `−s·wᵢwⱼ·ln d` in the metric of the
+/// weights (class Em; the brief's finding F-c, declared as it is, F8).
+impl Declared for DegreeRepulsion {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "hub room",
+                Topology::AllPairs {
+                    cutoff: Some(self.radius),
+                },
+                Kernel::Repulsion { exponent: -1.0 },
+                Class::Em,
+                Observable::Spread,
+            )
+            .in_metric(Metric::Mass),
+        ]
+    }
+
+    /// `−s·wᵢwⱼ·ln(d/R)` within the radius, floored.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let w = self.weights_at(layout);
+        let (s, r, m) = (
+            f64::from(self.strength),
+            f64::from(self.radius),
+            f64::from(self.min_distance),
+        );
+        let mut energy = 0.0;
+        for i in 0..w.len() {
+            for j in (i + 1)..w.len() {
+                let d = layout.distance(i, j);
+                if d <= r {
+                    energy -= s * w[i] * w[j] * (floored_log(d, m) - r.ln());
+                }
+            }
+        }
+        Some(energy)
+    }
+
+    fn metric(&self, _term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        Some(self.weights_at(layout))
     }
 }
 

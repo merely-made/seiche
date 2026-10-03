@@ -22,7 +22,10 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable,
+    State, Term, Topology,
+};
 
 use super::{degrees, node_positions};
 
@@ -123,6 +126,66 @@ impl Force for Kuramoto {
     }
 }
 
+/// Both terms are H. With one natural frequency the phase step descends
+/// `−K·Σ cos(θᵢ − θⱼ)` in the degree metric, whose minimum is total
+/// synchrony, so the communities are a transient; the draw is a spring to a
+/// target that moves with the phase.
+impl Declared for Kuramoto {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "phase coupling",
+                Topology::Edges,
+                Kernel::PhaseCoupling,
+                Class::H,
+                Observable::PhaseClusters,
+            )
+            .in_metric(Metric::Degree)
+            .moving(State::Phase, Currency::Force),
+            Term::force(
+                "ring draw",
+                Topology::Unary,
+                Kernel::Harmonic,
+                Class::H,
+                Observable::PhaseClusters,
+            ),
+        ]
+    }
+
+    fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let (coupling, stiffness) = match term {
+            0 => (self.coupling, 0.0),
+            1 => (0.0, self.stiffness),
+            _ => return None,
+        };
+        let phases = self
+            .phases
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        Some(Box::new(Self {
+            phases: Mutex::new(phases),
+            radius_of: self.radius_of.clone(),
+            natural_frequency: self.natural_frequency,
+            coupling,
+            default_radius: self.default_radius,
+            centre: self.centre,
+            stiffness,
+        }))
+    }
+
+    fn metric(&self, term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        (term == 0).then(|| {
+            let degree = degrees(layout.edges);
+            layout
+                .nodes
+                .iter()
+                .map(|(key, _)| f64::from(degree.get(key).copied().unwrap_or(0).max(1)))
+                .collect()
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,6 +224,11 @@ mod tests {
                 self.0.apply(ctx, dt);
             }
         }
+        impl Declared for Shared {
+            fn terms(&self) -> Vec<Term> {
+                self.0.terms()
+            }
+        }
         sim.set_forces(vec![Box::new(Shared(phases_handle.clone()))]);
         for _ in 0..900 {
             sim.tick(1.0 / 60.0);
@@ -182,5 +250,81 @@ mod tests {
             assert!((r - 200.0).abs() < 70.0, "on the ring, not at {r:.0}");
         }
         let _ = all;
+    }
+
+    /// The phase coupling's declaration (H, degree metric), read in phase
+    /// space where it acts: with one natural frequency the step never raises
+    /// `V = −K·Σ cos(θᵢ − θⱼ)`, and the coupling's share of each phase change,
+    /// weighted by degree, sums to zero. The minimum it heads for is total
+    /// synchrony.
+    #[test]
+    fn the_phase_step_descends_and_balances_in_the_degree_metric() {
+        let keys: Vec<NodeKey> = (0..6).map(NodeKey::new).collect();
+        let mut edges = vec![];
+        for group in [&keys[0..3], &keys[3..6]] {
+            edges.push((group[0], group[1]));
+            edges.push((group[1], group[2]));
+            edges.push((group[2], group[0]));
+        }
+        edges.push((keys[2], keys[3]));
+        let mut sim = Simulation::new();
+        sim.sync_nodes(keys.iter().map(|&k| (k, Point2D::new(0.0, 0.0))));
+        sim.sync_edges(edges.clone());
+        let law = std::sync::Arc::new(Kuramoto::new(std::iter::empty()));
+        struct Shared(std::sync::Arc<Kuramoto>);
+        impl Force for Shared {
+            fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
+                self.0.apply(ctx, dt);
+            }
+        }
+        impl Declared for Shared {
+            fn terms(&self) -> Vec<Term> {
+                self.0.terms()
+            }
+        }
+        assert_eq!(law.terms()[0].metric, Some(Metric::Degree));
+        sim.set_forces(vec![Box::new(Shared(law.clone()))]);
+        sim.tick(1.0 / 60.0);
+        let degree = degrees(&edges);
+        let phases = |law: &Kuramoto| -> HashMap<NodeKey, f64> {
+            law.phases()
+                .into_iter()
+                .map(|(k, p)| (k, f64::from(p)))
+                .collect()
+        };
+        let energy = |p: &HashMap<NodeKey, f64>| -> f64 {
+            -f64::from(law.coupling) * edges.iter().map(|(a, b)| (p[a] - p[b]).cos()).sum::<f64>()
+        };
+        let (mut max_rise, mut residual, mut scale) = (0.0f64, 0.0f64, 0.0f64);
+        let mut before = phases(&law);
+        let start = energy(&before);
+        let dt = 1.0 / 60.0;
+        for _ in 0..600 {
+            sim.tick(dt);
+            let after = phases(&law);
+            max_rise = max_rise.max(energy(&after) - energy(&before));
+            let mut sum = 0.0;
+            for k in &keys {
+                let turn = (after[k] - before[k] + std::f64::consts::PI)
+                    .rem_euclid(std::f64::consts::TAU)
+                    - std::f64::consts::PI;
+                let coupled = turn - f64::from(law.natural_frequency) * f64::from(dt);
+                let w = f64::from(degree[k].max(1));
+                sum += w * coupled;
+                scale += (w * coupled).abs();
+            }
+            residual += sum.abs();
+            before = after;
+        }
+        let end = energy(&before);
+        assert!(end < start, "the phase energy falls: {start} -> {end}");
+        assert!(
+            max_rise <= 1e-3 * (start - end),
+            "rise {max_rise} against {start} -> {end}"
+        );
+        // Over the run, since near synchrony the coupled share is close to the
+        // phases' single-precision step.
+        let balance = residual / scale.max(f64::MIN_POSITIVE);
+        assert!(balance < 1e-3, "degree-weighted balance {balance}");
     }
 }
