@@ -67,8 +67,9 @@ Writing settled positions back into the host's own graph is the host's job.
 `Physics::advance_frame` keeps its deterministic one-tick behavior for inline
 callers. The additive `advance_elapsed(view, elapsed, config)` instead accepts
 host-measured `Duration`, runs bounded fixed steps, and publishes one snapshot.
-It does not read a clock or schedule frames. Browser/Canvas callers have not
-switched to it yet.
+It does not read a clock or schedule frames. Pictograph's opt-in `frame_at` /
+`frame_profiled_at` methods and the Graphshell Cambium tree use it. Existing
+deterministic Canvas callers and the older presenter retain their prior path.
 
 `ElapsedStepConfig` makes the per-call elapsed cap and step cap configurable;
 defaults are 50 ms and three steps. `ElapsedStepReport` records executed steps,

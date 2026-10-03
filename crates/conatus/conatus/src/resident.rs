@@ -38,10 +38,15 @@ use cubecl::client::Client;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
 
+pub mod binning;
 mod chunk;
+mod exclusion;
 pub mod kernels;
 
 pub use chunk::*;
+pub use exclusion::{
+    DEFAULT_CELL_THRESHOLD, Exclusion, ExclusionError, ExclusionParams, PendingExclusion,
+};
 
 /// One step's constants. [`Resident::new`] owns the matching CubeCL argument
 /// order, so a field added on one side and forgotten on the other fails at

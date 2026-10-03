@@ -31,6 +31,10 @@ tracing = "0.1"
 # that only wants the integrator — a wasm build, a batch layout job — takes the
 # inline backend and no threading runtime at all.
 armillary = { path = "../../armillary", version = "0.1.1", optional = true }
+# The lagged evaluator on the host's device (feature `gpu`): conatus's
+# resident lane, and the wgpu handle types a host passes in.
+conatus = { path = "../conatus", version = "0.1.0", features = ["resident"], optional = true }
+wgpu = { version = "30", default-features = false, optional = true }
 burn = { version = "=0.22.0-pre.4", default-features = false, features = ["std"], optional = true }
 burn-wgpu = { version = "=0.22.0-pre.4", default-features = false, features = ["std", "autotune"], optional = true }
 
@@ -49,8 +53,13 @@ actor = ["dep:armillary"]
 # Tensor laws are opt-in. The default integrator stays Burn-free.
 tensor-burn = ["dep:burn", "burn/ndarray", "dep:getrandom"]
 tensor-burn-wgpu = ["tensor-burn", "burn/wgpu", "burn/extension", "dep:burn-wgpu", "dep:getrandom"]
+# NodeExclusion's law on the host's GPU, lagged (`seiche::gpu`).
+gpu = ["dep:conatus", "dep:wgpu"]
 # Benchmark-only staging helper for the exact NodeExclusion law.
 gpu-bench = ["tensor-burn-wgpu"]
 
 [dev-dependencies]
 uuid = "1"
+# The `gpu` receipts boot an adapter of their own.
+pollster = "0.4"
+wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
