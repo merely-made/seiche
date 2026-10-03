@@ -13,7 +13,8 @@
 use rapier2d::prelude::*;
 
 use crate::laws::node_positions;
-use crate::{Force, ForceContext};
+use crate::terms::harmonic;
+use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridSnap {
@@ -44,6 +45,27 @@ impl Force for GridSnap {
                 body.add_force((target - position) * self.strength, true);
             }
         }
+    }
+}
+
+impl Declared for GridSnap {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "grid",
+            Topology::Unary,
+            Kernel::Harmonic,
+            Class::E,
+            Observable::Residual,
+        )]
+    }
+
+    /// `(s/2)|x − nearest grid point|²`, continuous across cell boundaries.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let cell = f64::from(self.cell.max(1.0));
+        Some(harmonic(f64::from(self.strength), layout, |i| {
+            let (x, y) = layout.at(i);
+            Some(((x / cell).round() * cell, (y / cell).round() * cell))
+        }))
     }
 }
 

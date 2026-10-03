@@ -31,7 +31,8 @@
 
 use crate::NodeKey;
 
-use crate::{Force, ForceContext};
+use crate::terms::spring;
+use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
 
 /// Default attraction stiffness at affinity `1.0` (scaled linearly by each
 /// pair's weight). Deliberately below [`EdgeSpring`](crate::EdgeSpring)'s
@@ -119,6 +120,36 @@ impl Force for AffinitySpring {
                 body.add_force(-pull, true);
             }
         }
+    }
+}
+
+/// A one-sided spring over the signal's pairs: E, its energy zero inside the
+/// rest length.
+impl Declared for AffinitySpring {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "affinity",
+            Topology::PairList,
+            Kernel::Spring,
+            Class::E,
+            Observable::PairLength,
+        )]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let index = layout.index();
+        let rest = f64::from(self.rest_length);
+        Some(
+            self.pairs
+                .iter()
+                .filter(|&&(a, b, weight)| a != b && weight > 0.0)
+                .filter_map(|&(a, b, weight)| {
+                    let d = layout.distance(*index.get(&a)?, *index.get(&b)?);
+                    let k = f64::from(self.stiffness) * f64::from(weight);
+                    Some(if d > rest { spring(k, d, rest) } else { 0.0 })
+                })
+                .sum(),
+        )
     }
 }
 

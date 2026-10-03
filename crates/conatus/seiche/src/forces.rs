@@ -27,7 +27,11 @@
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, RepulsionForces, RepulsionRequest, RepulsionRoute};
+use crate::terms::{floored_inverse, harmonic, spring};
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, Observable, RepulsionForces,
+    RepulsionRequest, RepulsionRoute, Term, Topology,
+};
 
 /// Add a staged evaluator's forces to the bodies they were computed for.
 fn apply_forces(
@@ -237,5 +241,79 @@ impl Force for Boundary {
                 body.add_force(-pos * self.strength, true);
             }
         }
+    }
+}
+
+impl Declared for NodeExclusion {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "exclusion",
+            Topology::AllPairs {
+                cutoff: Some(self.cutoff),
+            },
+            Kernel::Repulsion { exponent: -2.0 },
+            Class::E,
+            Observable::Overlaps,
+        )]
+    }
+
+    /// `s/d`, floored, less its value at the cutoff, so it is zero beyond.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let (s, m, c) = (
+            f64::from(self.strength),
+            f64::from(self.min_distance),
+            f64::from(self.cutoff),
+        );
+        let mut energy = 0.0;
+        for i in 0..layout.nodes.len() {
+            for j in (i + 1)..layout.nodes.len() {
+                let d = layout.distance(i, j);
+                if d <= c {
+                    energy += floored_inverse(s, d, m) - s / c;
+                }
+            }
+        }
+        Some(energy)
+    }
+}
+
+impl Declared for EdgeSpring {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "edge spring",
+            Topology::Edges,
+            Kernel::Spring,
+            Class::E,
+            Observable::PairLength,
+        )]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let (k, rest) = (f64::from(self.stiffness), f64::from(self.rest_length));
+        Some(
+            layout
+                .edge_indices()
+                .into_iter()
+                .map(|(i, j)| spring(k, layout.distance(i, j), rest))
+                .sum(),
+        )
+    }
+}
+
+impl Declared for Boundary {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "centring",
+            Topology::Unary,
+            Kernel::Harmonic,
+            Class::E,
+            Observable::Spread,
+        )]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        Some(harmonic(f64::from(self.strength), layout, |_| {
+            Some((0.0, 0.0))
+        }))
     }
 }

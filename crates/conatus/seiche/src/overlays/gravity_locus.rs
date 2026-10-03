@@ -19,7 +19,8 @@ use std::sync::Mutex;
 use rapier2d::prelude::*;
 
 use crate::laws::node_positions;
-use crate::{Force, ForceContext};
+use crate::terms::harmonic;
+use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
 
 #[derive(Debug)]
 pub struct GravityLocus {
@@ -82,6 +83,39 @@ impl Force for GravityLocus {
                 body.add_force((locus - position) * self.strength, true);
             }
         }
+    }
+}
+
+/// A still locus is E; the tide's moving locus is a time-dependent
+/// potential (class H), which never rests.
+impl Declared for GravityLocus {
+    fn terms(&self) -> Vec<Term> {
+        vec![match self.oscillation {
+            None => Term::force(
+                "centre",
+                Topology::Unary,
+                Kernel::Harmonic,
+                Class::E,
+                Observable::Residual,
+            ),
+            Some(_) => Term::force(
+                "tide",
+                Topology::Unary,
+                Kernel::Harmonic,
+                Class::H,
+                Observable::Energy,
+            ),
+        }]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        if self.oscillation.is_some() {
+            return None;
+        }
+        let (lx, ly) = self.target;
+        Some(harmonic(f64::from(self.strength), layout, |_| {
+            Some((f64::from(lx), f64::from(ly)))
+        }))
     }
 }
 

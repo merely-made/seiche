@@ -165,6 +165,16 @@ fn crowd(n: usize) -> Vec<(NodeKey, Point2D<f32>)> {
 /// Shares a law with the simulation so the test can read its flow state.
 struct Shared(std::sync::Arc<Density>);
 
+impl Declared for Shared {
+    fn terms(&self) -> Vec<Term> {
+        self.0.terms()
+    }
+
+    fn metric(&self, term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        self.0.metric(term, layout)
+    }
+}
+
 impl Force for Shared {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         self.0.apply(ctx, dt);

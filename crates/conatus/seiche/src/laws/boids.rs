@@ -17,7 +17,11 @@ use std::collections::HashMap;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::harmonic;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable, Term,
+    Topology,
+};
 
 use super::node_positions;
 
@@ -33,6 +37,8 @@ pub struct Boids {
     pub cohesion: f32,
     /// The speed every body is nudged toward, so the flock keeps moving.
     pub cruise_speed: f32,
+    /// Steering toward the cruising speed, per unit of speed short of it.
+    pub cruise: f32,
     /// Weak centering so the flock stays on the canvas.
     pub gravity: f32,
 }
@@ -45,6 +51,7 @@ impl Default for Boids {
             alignment: 3.0,
             cohesion: 0.6,
             cruise_speed: 40.0,
+            cruise: 0.5,
             gravity: 0.03,
         }
     }
@@ -109,11 +116,11 @@ impl Force for Boids {
             // Cruise: keep a heading, so a still flock starts and a fast one slows.
             let speed = velocities[i].length();
             if speed > 1e-3 {
-                force += velocities[i] / speed * ((self.cruise_speed - speed) * 0.5);
+                force += velocities[i] / speed * ((self.cruise_speed - speed) * self.cruise);
             } else {
                 // A body with no heading takes one from its index, deterministically.
                 let angle = i as f32 * 2.399_963;
-                force += Vector::new(angle.cos(), angle.sin()) * (self.cruise_speed * 0.5);
+                force += Vector::new(angle.cos(), angle.sin()) * (self.cruise_speed * self.cruise);
             }
             force -= nodes[i].2 * self.gravity;
             forces[i] = force;
@@ -123,6 +130,147 @@ impl Force for Boids {
                 body.add_force(forces[i], true);
             }
         }
+    }
+}
+
+/// Separation is a pair potential (E). Cohesion toward each node's own
+/// mates is a gradient in the metric of mate counts (Em); alignment and the
+/// cruise read velocity (N).
+impl Declared for Boids {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "separation",
+                Topology::AllPairs {
+                    cutoff: Some(self.separation_radius),
+                },
+                Kernel::Repulsion { exponent: -1.0 },
+                Class::E,
+                Observable::Overlaps,
+            ),
+            Term::force(
+                "alignment",
+                Topology::Edges,
+                Kernel::Steering,
+                Class::N,
+                Observable::Energy,
+            )
+            .in_metric(Metric::Degree),
+            Term::force(
+                "cohesion",
+                Topology::Edges,
+                Kernel::Steering,
+                Class::Em,
+                Observable::PairLength,
+            )
+            .in_metric(Metric::Degree),
+            Term::force(
+                "cruise",
+                Topology::Unary,
+                Kernel::Drive,
+                Class::N,
+                Observable::Energy,
+            ),
+            Term::force(
+                "centring",
+                Topology::Unary,
+                Kernel::Harmonic,
+                Class::E,
+                Observable::Spread,
+            ),
+        ]
+    }
+
+    fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let none = Self {
+            separation: 0.0,
+            alignment: 0.0,
+            cohesion: 0.0,
+            cruise: 0.0,
+            gravity: 0.0,
+            ..*self
+        };
+        let only = match term {
+            0 => Self {
+                separation: self.separation,
+                ..none
+            },
+            1 => Self {
+                alignment: self.alignment,
+                ..none
+            },
+            2 => Self {
+                cohesion: self.cohesion,
+                ..none
+            },
+            3 => Self {
+                cruise: self.cruise,
+                ..none
+            },
+            4 => Self {
+                gravity: self.gravity,
+                ..none
+            },
+            _ => return None,
+        };
+        Some(Box::new(only))
+    }
+
+    /// Separation `s(ln(R/d) + d/R − 1)` within the radius (joined smoothly
+    /// below one unit), cohesion `(c/2)Σ|xᵢ − xⱼ|²` over the mates, centring
+    /// `(g/2)|x|²`.
+    fn energy(&self, term: usize, layout: &Layout<'_>) -> Option<f64> {
+        match term {
+            0 => {
+                let (s, r) = (
+                    f64::from(self.separation),
+                    f64::from(self.separation_radius),
+                );
+                let mut energy = 0.0;
+                for i in 0..layout.nodes.len() {
+                    for j in (i + 1)..layout.nodes.len() {
+                        let d = layout.distance(i, j);
+                        if d >= r || d * d <= 1e-6 {
+                            continue;
+                        }
+                        energy += if d >= 1.0 {
+                            s * ((r / d).ln() + d / r - 1.0)
+                        } else {
+                            s * (r.ln() + 1.0 / (2.0 * r)) - s * (d - d * d / (2.0 * r))
+                        };
+                    }
+                }
+                Some(energy)
+            },
+            2 => {
+                let c = f64::from(self.cohesion);
+                Some(
+                    layout
+                        .edge_indices()
+                        .into_iter()
+                        .map(|(i, j)| 0.5 * c * layout.distance(i, j).powi(2))
+                        .sum(),
+                )
+            },
+            4 => Some(harmonic(f64::from(self.gravity), layout, |_| {
+                Some((0.0, 0.0))
+            })),
+            _ => None,
+        }
+    }
+
+    /// Each node's mate count: the averaging that makes cohesion and
+    /// alignment a gradient only in this metric.
+    fn metric(&self, term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        if term != 1 && term != 2 {
+            return None;
+        }
+        let mut count = vec![0.0; layout.nodes.len()];
+        for (i, j) in layout.edge_indices() {
+            count[i] += 1.0;
+            count[j] += 1.0;
+        }
+        Some(count)
     }
 }
 

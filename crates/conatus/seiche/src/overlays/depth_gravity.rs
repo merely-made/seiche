@@ -17,7 +17,10 @@ use std::collections::HashMap;
 use rapier2d::prelude::*;
 
 use crate::laws::node_positions;
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::harmonic;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 #[derive(Clone, Debug)]
 pub struct DepthGravity {
@@ -62,6 +65,35 @@ impl Force for DepthGravity {
                 body.add_force(axis * ((wanted - along) * self.strength), true);
             }
         }
+    }
+}
+
+impl Declared for DepthGravity {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "depth",
+            Topology::Unary,
+            Kernel::Harmonic,
+            Class::E,
+            Observable::Residual,
+        )]
+    }
+
+    /// `(s/2)(depth·h − x·â)²`: the pull acts along the axis only.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let (ax, ay) = {
+            let (x, y) = (f64::from(self.direction.0), f64::from(self.direction.1));
+            let n = x.hypot(y);
+            if n < 1e-6 { (0.0, 1.0) } else { (x / n, y / n) }
+        };
+        Some(harmonic(f64::from(self.strength), layout, |i| {
+            let depth = *self.depth_of.get(&layout.nodes[i].0)?;
+            // The target moves the axis component only.
+            let (x, y) = layout.at(i);
+            let along = x * ax + y * ay;
+            let wanted = f64::from(depth) * f64::from(self.spacing);
+            Some((x + (wanted - along) * ax, y + (wanted - along) * ay))
+        }))
     }
 }
 

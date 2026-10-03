@@ -71,6 +71,14 @@ pub use runtime::{
     TICK_DURATION,
 };
 
+/// What each force is, term by term (topology, kernel, state, currency,
+/// class, metric, observable), and the instruments that check it.
+pub mod instruments;
+pub mod terms;
+pub use terms::{
+    Class, Currency, Declared, Kernel, Layout, Metric, Observable, State, Term, Topology,
+};
+
 /// Built-in force forces for the force-directed orrery layout.
 pub mod forces;
 pub use forces::{Boundary, EdgeSpring, NodeExclusion};
@@ -266,7 +274,10 @@ fn scene_groups() -> InteractionGroups {
 /// Implementors should be cheap — the tick budget is ~16ms total —
 /// and write through `bodies.get_mut(...).add_force(...)` or
 /// equivalent. Forces are queried in registration order each tick.
-pub trait Force: Send {
+///
+/// Every force is [`Declared`]: it says what terms it applies, so a catalog
+/// reads its class and currency rather than restating them.
+pub trait Force: Declared + Send {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32);
 
     /// Whether the force has motion of its own still to run, so the host

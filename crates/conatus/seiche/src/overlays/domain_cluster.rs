@@ -17,7 +17,9 @@ use std::collections::HashMap;
 use rapier2d::prelude::*;
 
 use crate::laws::node_positions;
-use crate::{Force, ForceContext, NodeKey};
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+};
 
 #[derive(Clone, Debug)]
 pub struct DomainCluster {
@@ -65,6 +67,43 @@ impl Force for DomainCluster {
                 body.add_force((centroid - *position) * self.strength, true);
             }
         }
+    }
+}
+
+impl Declared for DomainCluster {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "group pull",
+            Topology::Groups,
+            Kernel::Harmonic,
+            Class::E,
+            Observable::Separation,
+        )]
+    }
+
+    /// The within-group variance, `(s/2)·Σ|x − c_g|²`.
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let mut sums: HashMap<u32, (f64, f64, f64)> = HashMap::new();
+        for (i, (key, _)) in layout.nodes.iter().enumerate() {
+            if let Some(&group) = self.group_of.get(key) {
+                let (x, y) = layout.at(i);
+                let entry = sums.entry(group).or_insert((0.0, 0.0, 0.0));
+                *entry = (entry.0 + x, entry.1 + y, entry.2 + 1.0);
+            }
+        }
+        let s = f64::from(self.strength);
+        Some(
+            layout
+                .nodes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (key, _))| {
+                    let (sx, sy, n) = sums[self.group_of.get(key)?];
+                    let (x, y) = layout.at(i);
+                    Some(0.5 * s * ((x - sx / n).powi(2) + (y - sy / n).powi(2)))
+                })
+                .sum(),
+        )
     }
 }
 

@@ -17,7 +17,11 @@ use std::collections::HashMap;
 use rapier2d::prelude::*;
 
 use crate::laws::{degrees, node_positions};
-use crate::{Force, ForceContext, NodeKey};
+use crate::terms::floored_log;
+use crate::{
+    Class, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable, Term,
+    Topology,
+};
 
 #[derive(Clone, Debug)]
 pub struct HubGravity {
@@ -81,6 +85,55 @@ impl Force for HubGravity {
                 body.add_force(forces[i], true);
             }
         }
+    }
+}
+
+impl HubGravity {
+    /// Each node's weight: the host's, or `ln(degree + 1)`.
+    fn weights_at(&self, layout: &Layout<'_>) -> Vec<f64> {
+        let degree = degrees(layout.edges);
+        layout
+            .nodes
+            .iter()
+            .map(|(key, _)| match &self.weights {
+                Some(map) => f64::from(map.get(key).copied().unwrap_or(0.0).max(0.0)),
+                None => f64::from(((degree.get(key).copied().unwrap_or(0) + 1) as f32).ln()),
+            })
+            .collect()
+    }
+}
+
+/// Each node is pulled by the other's weight alone: the gradient of
+/// `s·wᵢwⱼ·ln d` in the metric of the weights (class Em; the brief's finding
+/// F-c, declared as it is, F8).
+impl Declared for HubGravity {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "hub pull",
+                Topology::AllPairs { cutoff: None },
+                Kernel::Attraction { exponent: -1.0 },
+                Class::Em,
+                Observable::Spread,
+            )
+            .in_metric(Metric::Mass),
+        ]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let w = self.weights_at(layout);
+        let (s, m) = (f64::from(self.strength), f64::from(self.min_distance));
+        let mut energy = 0.0;
+        for i in 0..w.len() {
+            for j in (i + 1)..w.len() {
+                energy += s * w[i] * w[j] * floored_log(layout.distance(i, j), m);
+            }
+        }
+        Some(energy)
+    }
+
+    fn metric(&self, _term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        Some(self.weights_at(layout))
     }
 }
 

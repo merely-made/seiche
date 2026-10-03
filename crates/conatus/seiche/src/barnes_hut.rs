@@ -25,7 +25,7 @@
 use euclid::default::{Point2D, Vector2D};
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext};
+use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
 
 /// Barnes–Hut approximation tuning.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -132,6 +132,33 @@ impl Force for BarnesHutRepulsion {
                 body.add_force(Vector::new(f.x, f.y), true);
             }
         }
+    }
+}
+
+/// The exact charge this force approximates: `−s·ln d` per pair, constant
+/// inside the distance floor (where the quadtree applies no push). The
+/// quadtree at `θ` is its Barnes–Hut rung, so its forces match this energy's
+/// gradient only to the rung's tolerance.
+impl Declared for BarnesHutRepulsion {
+    fn terms(&self) -> Vec<Term> {
+        vec![Term::force(
+            "charge",
+            Topology::AllPairs { cutoff: None },
+            Kernel::Repulsion { exponent: -1.0 },
+            Class::E,
+            Observable::Overlaps,
+        )]
+    }
+
+    fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
+        let (s, m) = (f64::from(self.strength), f64::from(self.min_distance));
+        let mut energy = 0.0;
+        for i in 0..layout.nodes.len() {
+            for j in (i + 1)..layout.nodes.len() {
+                energy -= s * layout.distance(i, j).max(m).ln();
+            }
+        }
+        Some(energy)
     }
 }
 

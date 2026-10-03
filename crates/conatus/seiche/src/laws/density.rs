@@ -32,7 +32,10 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NODE_BODY_RADIUS, NodeKey};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NODE_BODY_RADIUS,
+    NodeKey, Observable, State, Term, Topology,
+};
 
 use super::node_positions;
 
@@ -497,6 +500,37 @@ impl Force for Density {
     /// budget; a spent flow lets it rest.
     fn wants_tick(&self) -> bool {
         self.lock().flow.is_none_or(|flow| !flow.converged)
+    }
+}
+
+/// Density in the dynamics grammar's words: a medium the nodes are carried
+/// on, by diffusion, written rather than forced (so class K, kinematic), its
+/// transport weighted by each node's mass, read by mass against area.
+/// *Reading, not ruled*: the grammar plan's suggested declaration.
+impl Declared for Density {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "density",
+                Topology::Medium,
+                Kernel::Diffusion,
+                Class::K,
+                Observable::MassAreaRank,
+            )
+            .in_metric(Metric::Wasserstein)
+            .moving(State::Field, Currency::Kinematic),
+        ]
+    }
+
+    /// The transport metric's weights: each node's mass.
+    fn metric(&self, _term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        Some(
+            layout
+                .nodes
+                .iter()
+                .map(|(key, _)| f64::from(self.mass(key)))
+                .collect(),
+        )
     }
 }
 

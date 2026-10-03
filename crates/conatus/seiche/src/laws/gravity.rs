@@ -18,7 +18,10 @@ use std::sync::Mutex;
 
 use rapier2d::prelude::*;
 
-use crate::{Force, ForceContext, NodeKey};
+use crate::{
+    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable,
+    State, Term, Topology,
+};
 
 use super::node_positions;
 
@@ -136,6 +139,70 @@ impl Force for Gravity {
                 body.add_force(force, true);
             }
         }
+    }
+}
+
+/// Gravitation is conservative in the metric of the gravitational masses,
+/// but its minimizer is collapse (class H); the drive that cancels damping is
+/// velocity-driven (N), and the kick is a one-time velocity write (K).
+impl Declared for Gravity {
+    fn terms(&self) -> Vec<Term> {
+        vec![
+            Term::force(
+                "gravitation",
+                Topology::AllPairs { cutoff: None },
+                Kernel::Plummer,
+                Class::H,
+                Observable::Energy,
+            )
+            .in_metric(Metric::Mass),
+            Term::force(
+                "counter-damping",
+                Topology::Unary,
+                Kernel::Drive,
+                Class::N,
+                Observable::Energy,
+            ),
+            Term::force(
+                "orbital kick",
+                Topology::Unary,
+                Kernel::VelocityWrite,
+                Class::K,
+                Observable::Energy,
+            )
+            .moving(State::Velocity, Currency::Kinematic),
+        ]
+    }
+
+    fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let (strength, counter_damping, orbital_kick) = match term {
+            0 => (self.strength, false, 0.0),
+            1 => (0.0, self.counter_damping, 0.0),
+            2 => (0.0, false, self.orbital_kick),
+            _ => return None,
+        };
+        let kicked = *self
+            .kicked
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Some(Box::new(Self {
+            masses: self.masses.clone(),
+            strength,
+            softening: self.softening,
+            orbital_kick,
+            counter_damping,
+            kicked: Mutex::new(kicked),
+        }))
+    }
+
+    fn metric(&self, term: usize, layout: &Layout<'_>) -> Option<Vec<f64>> {
+        (term == 0).then(|| {
+            layout
+                .nodes
+                .iter()
+                .map(|(key, _)| f64::from(self.mass(key)))
+                .collect()
+        })
     }
 }
 
