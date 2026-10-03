@@ -226,6 +226,26 @@ fn slow_motion_draws_every_frame_and_steps_every_fifth() {
     assert!((0.18..=0.22).contains(&reached), "reached {reached}");
 }
 
+/// A host that resets elapsed time before each deterministic frame (the
+/// canvas's `frame`) keeps the slow speed's fraction.
+#[test]
+fn resetting_elapsed_time_keeps_a_deterministic_fraction() {
+    let sim = sim(Set::LinLog);
+    let mut view = sim.view();
+    let mut physics = Physics::inline(sim, TICKS);
+    physics.set_speed(Speed::from_factor(0.2));
+    let mut stepped = Vec::new();
+    for frame in 1..=10 {
+        physics.reset_elapsed();
+        let before = physics.pace().ticks;
+        physics.advance_frame(&mut view);
+        if physics.pace().ticks > before {
+            stepped.push(frame);
+        }
+    }
+    assert_eq!(stepped, vec![1, 5, 10]);
+}
+
 #[test]
 fn at_real_time_nothing_is_drawn_between() {
     let sim = sim(Set::LinLog);

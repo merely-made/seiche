@@ -56,9 +56,14 @@ impl Physics {
     /// hides a surface. The host must also reset its own last timestamp so the
     /// first resumed call excludes the hidden interval. Does not halt physics,
     /// change positions, or send any command to an independently paced actor.
+    /// A deterministic driver's fraction (a slow speed's next tick) stays.
     pub fn reset_elapsed(&mut self) {
         match self {
-            Self::Inline(p) => p.pace.forget(),
+            Self::Inline(p) => {
+                if p.pace.driver == Some(Driver::Elapsed) {
+                    p.pace.forget();
+                }
+            },
             #[cfg(feature = "actor")]
             Self::Actor(_) => {},
         }
