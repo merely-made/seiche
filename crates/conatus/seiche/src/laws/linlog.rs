@@ -21,6 +21,13 @@
 //!
 //! The law id stays `energy.linlog` for saved scenes (ruled 2026-10-02, F7:
 //! "Keep (1, −1), relabel ForceAtlas2").
+//!
+//! The defaults are a retune (ruled 2026-10-04, "Repulsion 6,000, centring
+//! 0.2"): components settle about `√(r·ΣW/g)` apart, which at the first
+//! tuning (60,000 and 0.02) put the P2 fixture's two islands near 9,600 units
+//! apart, past what any view could frame. Now they settle about 940 apart with
+//! edges near Springs' rest length, and still twice as separated, for their
+//! size, as Springs leaves them.
 
 use rapier2d::prelude::*;
 
@@ -46,7 +53,8 @@ pub struct LinLogForce {
     pub degree_weighted: bool,
     /// Distance floor for the repulsion.
     pub min_distance: f32,
-    /// Weak centering so disconnected pieces stay bounded.
+    /// Centring toward the origin, per unit distance and weight, so
+    /// disconnected pieces stay bounded; it sets how far apart they settle.
     pub gravity: f32,
 }
 
@@ -55,10 +63,10 @@ impl Default for LinLogForce {
         Self {
             attraction: 4.0,
             attraction_exponent: 1.0,
-            repulsion: 60_000.0,
+            repulsion: 6_000.0,
             degree_weighted: true,
             min_distance: 10.0,
-            gravity: 0.02,
+            gravity: 0.2,
         }
     }
 }
@@ -317,55 +325,111 @@ mod tests {
         );
     }
 
-    /// Diagnostic (energy-frame lane, 2026-10-03): the P2 fixture's topology
-    /// (two components, 5 and 6 nodes, 10 relations) from a Spiral-sized seed,
-    /// 60 s at the tick, under Springs and under Energy at its default and at
-    /// candidate tunings. Prints extent, island separation, edge length,
-    /// overlaps, and the zoom the tree page's 982 x 627 canvas would need.
+    /// The P2 fixture's topology (graphshell's reference host): nodes 0-4 and
+    /// 5-10 are its two components, joined by these ten relations.
+    const FIXTURE_PAIRS: [(usize, usize); 10] = [
+        (0, 1), (0, 2), (3, 0), (3, 2), (4, 3),
+        (5, 6), (5, 7), (6, 8), (9, 5), (10, 9),
+    ];
+
+    /// The fixture seeded on a Spiral-sized phyllotaxis under `forces`.
+    fn fixture(forces: Vec<Box<dyn Force>>) -> (Simulation, Vec<NodeKey>) {
+        let keys: Vec<NodeKey> = (0..11).map(NodeKey::new).collect();
+        let mut sim = Simulation::new();
+        sim.sync_nodes(keys.iter().enumerate().map(|(i, &k)| {
+            let (r, t) = (19.0 * (i as f32).sqrt(), i as f32 * 2.399_963);
+            (k, Point2D::new(r * t.cos(), r * t.sin()))
+        }));
+        sim.sync_edges(FIXTURE_PAIRS.iter().map(|&(a, b)| (keys[a], keys[b])));
+        sim.set_forces(forces);
+        (sim, keys)
+    }
+
+    fn positions(sim: &Simulation, keys: &[NodeKey]) -> Vec<Vector> {
+        keys.iter()
+            .map(|k| sim.position_of(*k).map_or(Vector::ZERO, |p| Vector::new(p.x, p.y)))
+            .collect()
+    }
+
+    /// The two components' centroids, and the nodes' mean distance from them.
+    fn islands(at: &[Vector]) -> ([Vector; 2], f32) {
+        let island = |i: usize| usize::from(i >= 5);
+        let mut c = [Vector::ZERO; 2];
+        for (i, p) in at.iter().enumerate() {
+            c[island(i)] += *p / if island(i) == 0 { 5.0 } else { 6.0 };
+        }
+        let radius = at
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (*p - c[island(i)]).length())
+            .sum::<f32>()
+            / at.len() as f32;
+        (c, radius)
+    }
+
+    /// How far apart the islands sit for their size, after 60 s.
+    fn fixture_ratio(forces: Vec<Box<dyn Force>>) -> f32 {
+        let (mut sim, keys) = fixture(forces);
+        for _ in 0..3600 {
+            sim.tick(crate::TICK_DT);
+        }
+        let (c, radius) = islands(&positions(&sim, &keys));
+        (c[0] - c[1]).length() / radius.max(1.0)
+    }
+
+    fn springs() -> Vec<Box<dyn Force>> {
+        vec![
+            Box::new(NodeExclusion::default()),
+            Box::new(EdgeSpring::default()),
+            Box::new(Boundary::default()),
+        ]
+    }
+
+    /// The law's claim on the P2 fixture's topology at the retuned defaults
+    /// (ruled 2026-10-04, "Repulsion 6,000, centring 0.2"): its islands sit
+    /// further apart, for their size, than Springs leaves them, by the same
+    /// factor the two-cliques claim asks. Energy as the catalog builds it.
+    #[test]
+    fn the_fixture_islands_separate_further_than_under_springs() {
+        let energy = fixture_ratio(vec![
+            Box::new(NodeExclusion::default()),
+            Box::new(LinLogForce::default()),
+        ]);
+        let springs = fixture_ratio(springs());
+        println!("fixture islands: Energy {energy:.2}, Springs {springs:.2}");
+        assert!(
+            energy > springs * 1.3,
+            "fixture island ratio under Energy {energy:.2} should exceed Springs {springs:.2} x 1.3"
+        );
+    }
+
+    /// Diagnostic (energy-frame lane, 2026-10-03): the fixture over 60 s
+    /// under Springs, under Energy at its defaults and at the first tuning's
+    /// candidates, and under Orbit. Prints extent, island separation, edge
+    /// length, overlaps, and the zoom the tree page's 982 x 627 canvas needs.
     #[test]
     #[ignore = "diagnostic: prints the scale readings"]
     fn diag_energy_scale_on_the_p2_fixture() {
-        let keys: Vec<NodeKey> = (0..11).map(NodeKey::new).collect();
-        let pairs = [
-            (0, 1), (0, 2), (3, 0), (3, 2), (4, 3),
-            (5, 6), (5, 7), (6, 8), (9, 5), (10, 9),
-        ];
-        let edges: Vec<_> = pairs.iter().map(|&(a, b)| (keys[a], keys[b])).collect();
-        let island = |i: usize| usize::from(i >= 5);
         let run = |label: &str, forces: Vec<Box<dyn Force>>| {
-            let mut sim = Simulation::new();
-            sim.sync_nodes(keys.iter().enumerate().map(|(i, &k)| {
-                let (r, t) = (19.0 * (i as f32).sqrt(), i as f32 * 2.399_963);
-                (k, Point2D::new(r * t.cos(), r * t.sin()))
-            }));
-            sim.sync_edges(edges.clone());
-            sim.set_forces(forces);
+            let (mut sim, keys) = fixture(forces);
             let mut line = format!("{label}:");
             for tick in 1..=3600u32 {
                 sim.tick(crate::TICK_DT);
                 if ![60, 360, 1200, 3600].contains(&tick) {
                     continue;
                 }
-                let at: Vec<Vector> = keys
-                    .iter()
-                    .map(|k| sim.position_of(*k).map_or(Vector::ZERO, |p| Vector::new(p.x, p.y)))
-                    .collect();
+                let at = positions(&sim, &keys);
                 let (mut lo, mut hi) = (at[0], at[0]);
                 for p in &at {
                     lo = Vector::new(lo.x.min(p.x), lo.y.min(p.y));
                     hi = Vector::new(hi.x.max(p.x), hi.y.max(p.y));
                 }
-                let mut c = [Vector::ZERO; 2];
-                for (i, p) in at.iter().enumerate() {
-                    c[island(i)] += *p / if island(i) == 0 { 5.0 } else { 6.0 };
-                }
-                let radius = at
+                let (c, radius) = islands(&at);
+                let edge = FIXTURE_PAIRS
                     .iter()
-                    .enumerate()
-                    .map(|(i, p)| (*p - c[island(i)]).length())
+                    .map(|&(a, b)| (at[a] - at[b]).length())
                     .sum::<f32>()
-                    / 11.0;
-                let edge = pairs.iter().map(|&(a, b)| (at[a] - at[b]).length()).sum::<f32>() / 10.0;
+                    / 10.0;
                 let mut overlaps = 0;
                 for i in 0..11 {
                     for j in (i + 1)..11 {
@@ -390,44 +454,43 @@ mod tests {
             }
             println!("{line}");
         };
-        run(
-            "springs",
-            vec![
-                Box::new(NodeExclusion::default()),
-                Box::new(EdgeSpring::default()),
-                Box::new(Boundary::default()),
-            ],
-        );
+        run("springs", springs());
         let d = LinLogForce::default();
+        // The first tuning, which the 2026-10-04 retune replaced.
+        let first = LinLogForce {
+            repulsion: 60_000.0,
+            gravity: 0.02,
+            ..d
+        };
+        let default = format!(
+            "energy default (r {}, g {}, a {})",
+            d.repulsion, d.gravity, d.attraction
+        );
         for (label, law) in [
-            ("energy default (r 60000, g 0.02, a 4)", d),
-            ("energy r 6000", LinLogForce { repulsion: 6_000.0, ..d }),
-            ("energy r 600", LinLogForce { repulsion: 600.0, ..d }),
-            ("energy g 0.2", LinLogForce { gravity: 0.2, ..d }),
-            ("energy g 2", LinLogForce { gravity: 2.0, ..d }),
-            ("energy r 10000, g 1.2", LinLogForce { repulsion: 10_000.0, gravity: 1.2, ..d }),
-            ("energy r 6000, g 0.2", LinLogForce { repulsion: 6_000.0, gravity: 0.2, ..d }),
-            ("energy r 6000, g 0.6", LinLogForce { repulsion: 6_000.0, gravity: 0.6, ..d }),
+            (default.as_str(), d),
+            ("energy first tuning (r 60000, g 0.02)", first),
+            ("first, r 6000", LinLogForce { repulsion: 6_000.0, ..first }),
+            ("first, r 600", LinLogForce { repulsion: 600.0, ..first }),
+            ("first, g 0.2", LinLogForce { gravity: 0.2, ..first }),
+            ("first, g 2", LinLogForce { gravity: 2.0, ..first }),
+            ("first, r 10000, g 1.2", LinLogForce { repulsion: 10_000.0, gravity: 1.2, ..first }),
+            ("first, r 6000, g 0.6", LinLogForce { repulsion: 6_000.0, gravity: 0.6, ..first }),
         ] {
             run(label, vec![Box::new(NodeExclusion::default()), Box::new(law)]);
             // The law's own claim at this tuning: the two-cliques ratio.
             println!(
                 "  two cliques: {:.2} (Springs {:.2})",
                 settle(vec![Box::new(law)]),
-                settle(vec![
-                    Box::new(NodeExclusion::default()),
-                    Box::new(EdgeSpring::default()),
-                    Box::new(Boundary::default()),
-                ]),
+                settle(springs()),
             );
         }
         // Orbit beside it: masses by degree + 1, with and without exclusion.
         let mut degree = [1.0f32; 11];
-        for &(a, b) in &pairs {
+        for &(a, b) in &FIXTURE_PAIRS {
             degree[a] += 1.0;
             degree[b] += 1.0;
         }
-        let masses = || keys.iter().copied().zip(degree).collect::<Vec<_>>();
+        let masses = || (0..11).map(NodeKey::new).zip(degree).collect::<Vec<_>>();
         run(
             "orbit (exclusion + gravity, as the catalog builds it)",
             vec![
