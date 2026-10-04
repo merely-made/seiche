@@ -641,6 +641,18 @@ impl Physics {
         }
     }
 
+    /// Why the layout keeps moving, for a host's diagnostics: whether the
+    /// world asks for ticks of its own (a scene, or a force such as a flow
+    /// that has not converged), and the settle budget left. The actor reports
+    /// neither and answers `(false, 0)`.
+    pub fn tick_demand(&self) -> (bool, u32) {
+        match self {
+            Physics::Inline(p) => (p.sim.wants_continuous_tick(), p.ticks_remaining),
+            #[cfg(feature = "actor")]
+            Physics::Actor(_) => (false, 0),
+        }
+    }
+
     /// Whether the layout is still moving (settle in progress or a node dragged).
     pub fn is_settling(&self) -> bool {
         match self {
