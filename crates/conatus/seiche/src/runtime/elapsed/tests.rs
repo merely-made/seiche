@@ -218,6 +218,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
         updates,
         settling: true,
         energy: 0.0,
+        speed: 0.0,
         command_epoch: 0,
     });
     let mut sim = Simulation::new();

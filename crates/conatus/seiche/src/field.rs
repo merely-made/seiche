@@ -28,6 +28,7 @@ impl Simulation {
             || self.fluid.is_some()
             || self.scene_field.is_some()
             || !self.emitters.is_empty()
+            || self.forces.iter().any(|force| force.wants_tick())
     }
 
     /// Apply the scene force-field (if any) to every dynamic scene body — a whirlpool's tangential
