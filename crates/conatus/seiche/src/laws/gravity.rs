@@ -207,6 +207,9 @@ impl Declared for Gravity {
 }
 
 #[cfg(test)]
+mod diag;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::Simulation;
