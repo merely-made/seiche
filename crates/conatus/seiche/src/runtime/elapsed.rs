@@ -87,7 +87,7 @@ impl Physics {
                 // Owed time is simulated nanoseconds times a thousand: wall
                 // time times the speed in thousandths. Reports are wall time.
                 p.pace.drive(Driver::Elapsed);
-                let milli = u64::from(p.pace.speed.milli());
+                let milli = u64::from(p.pace.milli());
                 let accepted = elapsed.min(config.max_elapsed);
                 p.pace.owe(speed::nanos(accepted));
                 let owed_steps = p.pace.owed_steps();

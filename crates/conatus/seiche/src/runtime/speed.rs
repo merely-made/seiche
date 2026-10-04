@@ -28,7 +28,7 @@ pub(super) const TICK_UNITS: u64 = TICK_NS * 1_000;
 const METER_FRAMES: usize = 32;
 
 /// Simulated seconds per wall second, in thousandths, clamped to
-/// [`Speed::MIN`]..=[`Speed::MAX`].
+/// [`Speed::MIN`]..=[`Speed::MAX`], or [`Speed::UNCAPPED`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Speed(u32);
 
@@ -36,6 +36,11 @@ impl Speed {
     pub const MIN: Speed = Speed(200);
     pub const MAX: Speed = Speed(50_000);
     pub const REAL_TIME: Speed = Speed(1_000);
+    /// As fast as the step budget allows (ruled 2026-10-04, "Target + Max"):
+    /// every frame runs ticks until its budget is spent. With no budget
+    /// installed it runs at [`Speed::MAX`], so it can never run a living law
+    /// away in one frame. Only named, never reached by clamping.
+    pub const UNCAPPED: Speed = Speed(u32::MAX);
 
     pub const fn from_milli(milli: u32) -> Self {
         Speed(if milli < Self::MIN.0 {
@@ -59,8 +64,13 @@ impl Speed {
         self.0
     }
 
+    /// The factor, infinite for [`Speed::UNCAPPED`].
     pub fn factor(self) -> f32 {
-        self.0 as f32 / 1_000.0
+        if self == Self::UNCAPPED {
+            f32::INFINITY
+        } else {
+            self.0 as f32 / 1_000.0
+        }
     }
 }
 
@@ -187,8 +197,18 @@ impl Pace {
     }
 
     /// Owe `wall_ns` of wall time at the current speed.
+    /// The speed's thousandths as stepped: [`Speed::UNCAPPED`] without a
+    /// budget runs at [`Speed::MAX`].
+    pub(super) fn milli(&self) -> u32 {
+        if self.speed == Speed::UNCAPPED && self.budget.is_none() {
+            Speed::MAX.milli()
+        } else {
+            self.speed.milli()
+        }
+    }
+
     pub(super) fn owe(&mut self, wall_ns: u64) {
-        let units = u128::from(wall_ns) * u128::from(self.speed.milli());
+        let units = u128::from(wall_ns) * u128::from(self.milli());
         self.owed = self
             .owed
             .saturating_add(units.min(u128::from(u64::MAX)) as u64);
@@ -200,7 +220,7 @@ impl Pace {
 
     /// A step cap given for real time, scaled to this speed (rounded up).
     pub(super) fn scaled_cap(&self, cap: u32) -> u32 {
-        let scaled = (u64::from(cap) * u64::from(self.speed.milli())).div_ceil(1_000);
+        let scaled = (u64::from(cap) * u64::from(self.milli())).div_ceil(1_000);
         scaled.min(u64::from(u32::MAX)) as u32
     }
 

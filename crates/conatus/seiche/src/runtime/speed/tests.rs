@@ -360,6 +360,42 @@ fn fast_forward_stops_at_the_budget_and_reports_the_speed_it_reached() {
     assert_eq!((report.steps, report.budget_bound), (3, false));
 }
 
+/// Max runs as many ticks as the budget allows, past 50x when the ticks are
+/// cheap; with no budget it runs at 50x (the control: it cannot run away).
+#[test]
+fn uncapped_runs_until_the_budget_is_spent() {
+    let config = ElapsedStepConfig {
+        max_elapsed: TICK_DURATION * 4,
+        max_steps: 3,
+    };
+    let budget = Duration::from_millis(8);
+    let (mut fifty, mut view) = costly(100, budget, 50.0);
+    let capped = fifty.advance_elapsed(&mut view, TICK_DURATION, config);
+    assert_eq!((capped.steps, capped.budget_bound), (50, false));
+
+    let (mut max, mut view) = costly(100, budget, 50.0);
+    max.set_speed(Speed::UNCAPPED);
+    // Six frames of 80 stay inside the 600-tick settle.
+    for _ in 0..6 {
+        let report = max.advance_elapsed(&mut view, TICK_DURATION, config);
+        assert_eq!((report.steps, report.budget_bound), (80, true));
+        assert!(report.compute.unwrap() <= budget, "{:?}", report.compute);
+    }
+    let reached = max.pace().effective_speed.unwrap();
+    assert!((reached - 80.0).abs() < 1e-3, "reached {reached}");
+    assert!(Speed::UNCAPPED.factor().is_infinite());
+
+    // Control: no budget installed, Max steps at 50x.
+    let sim = sim(Set::LinLog);
+    let mut view = sim.view();
+    let mut unbudgeted = Physics::inline(sim, TICKS);
+    unbudgeted.set_speed(Speed::UNCAPPED);
+    let report = unbudgeted.advance_elapsed(&mut view, TICK_DURATION, config);
+    assert_eq!((report.steps, report.budget_bound), (50, false));
+    assert!(unbudgeted.advance_frame(&mut view));
+    assert_eq!(unbudgeted.pace().ticks, 100, "the deterministic driver too");
+}
+
 #[test]
 fn a_seed_snaps_instead_of_gliding_in_slow_motion() {
     let sim = sim(Set::LinLog);
