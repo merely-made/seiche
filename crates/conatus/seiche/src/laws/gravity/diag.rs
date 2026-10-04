@@ -254,6 +254,8 @@ pub(super) struct Recipe {
     pub kick: bool,
     pub gravitation: bool,
     pub counter: Counter,
+    /// `Gravity::radial_floor`, read under `Counter::Law` only.
+    pub radial_floor: f32,
     pub centring: Option<f32>,
 }
 
@@ -268,6 +270,7 @@ impl Recipe {
             kick: true,
             gravitation: true,
             counter: Counter::Full,
+            radial_floor: g.radial_floor,
             centring: None,
         }
     }
@@ -289,6 +292,7 @@ impl Recipe {
             softening: self.softening,
             orbital_kick: kick,
             counter_damping: counter,
+            radial_floor: self.radial_floor,
             ..Gravity::new(fixture.mass_map(), counter)
         };
         let mut parts = Vec::new();
@@ -1380,4 +1384,27 @@ fn diag_orbit_no_damping() {
             &[0.0],
         );
     }
+}
+
+/// The ruled Orbit with its radial floor (0.82, ruled 2026-10-04) at no
+/// damping, the saved scenes' 0.7, the old page's 0.82 and the tree page's
+/// 2.5, against the bar; the same law without the floor at no damping as the
+/// control.
+#[test]
+#[ignore = "diagnostic: prints the floored Orbit at four dampings"]
+fn diag_orbit_floor() {
+    let ruled = Recipe {
+        counter: Counter::Law,
+        centring: Some(0.02),
+        ..Recipe::catalog().reach(2.0)
+    };
+    sweep_at("ruled with its floor", &ruled, &[0.0, 0.7, 0.82, 2.5]);
+    sweep_at(
+        "control: no floor",
+        &Recipe {
+            radial_floor: 0.0,
+            ..ruled
+        },
+        &[0.0],
+    );
 }
