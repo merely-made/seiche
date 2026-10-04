@@ -535,6 +535,7 @@ fn every_force_is_reproducible_run_to_run() {
             with_springs(|| {
                 Box::new(crate::Gravity::new(
                     keys().map(|k| (k, 1.0 + k.index() as f32)),
+                    crate::CounterDamping::Tangential,
                 ))
             }),
         ),
