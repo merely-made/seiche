@@ -82,11 +82,13 @@ impl Default for NodeExclusion {
 
 impl Force for NodeExclusion {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
-        // Snapshot every node's (handle, position) immutably before touching forces.
-        let nodes: Vec<(RigidBodyHandle, Vector)> = ctx
-            .bodies_by_node
-            .values()
-            .filter_map(|&handle| ctx.bodies.get(handle).map(|b| (handle, b.translation())))
+        // Snapshot every node's (handle, position) in key order before touching
+        // forces: each body's sum then runs in the same order in every run, so
+        // a seeded layout is bit-reproducible (ruled 2026-10-04, "Sum in key
+        // order"; HashMap order differed by up to ~35,000 ULP in 600 ticks).
+        let nodes: Vec<(RigidBodyHandle, Vector)> = crate::laws::node_positions(ctx)
+            .into_iter()
+            .map(|(_, handle, position)| (handle, position))
             .collect();
 
         // At or above the threshold, a host may stage this exact law through a

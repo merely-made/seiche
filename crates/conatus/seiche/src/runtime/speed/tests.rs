@@ -6,11 +6,12 @@
 //! ticks, slow motion drawn between ticks, and fast-forward under a budget
 //! (with a cheaper tick the budget does not bind as the control).
 //!
-//! Bit identity needs a reproducible force set. `NodeExclusion` and
-//! `BarnesHutRepulsion` sum in `HashMap` order and are not reproducible run to
-//! run (see [`reproducibility_by_force`]), so the trajectory receipts use
-//! LinLog, an all-pairs law summed in key order, and Anneal, whose seeded walk
-//! and per-tick cooling change on any extra or missing tick.
+//! Bit identity needs reproducible forces. `NodeExclusion` and
+//! `BarnesHutRepulsion` summed in `HashMap` order until 2026-10-04 ("Sum in
+//! key order"); [`every_force_is_reproducible_run_to_run`] holds every force
+//! set to it now. The trajectory receipts run Springs and Charge (the two
+//! that were not), LinLog, and Anneal, whose seeded walk and per-tick cooling
+//! change on any extra or missing tick.
 
 use std::cell::Cell;
 use std::time::Duration;
@@ -19,19 +20,34 @@ use euclid::default::Point2D;
 
 use super::super::{ElapsedStepConfig, LayoutView, Physics};
 use super::{Speed, StepBudget, TICK_DT, TICK_DURATION};
-use crate::{Anneal, Boundary, EdgeSpring, Force, LinLogForce, NodeExclusion, NodeKey, Simulation};
+use crate::{
+    Anneal, BarnesHutRepulsion, Boundary, EdgeSpring, Force, LinLogForce, NodeExclusion, NodeKey,
+    Simulation,
+};
 
 const NODES: u32 = 24;
 const TICKS: u32 = 600;
 
 #[derive(Clone, Copy, Debug)]
 enum Set {
+    Springs,
+    Charge,
     LinLog,
     Anneal,
 }
 
 fn forces(set: Set) -> Vec<Box<dyn Force>> {
     match set {
+        Set::Springs => vec![
+            Box::new(NodeExclusion::default()),
+            Box::new(EdgeSpring::default()),
+            Box::new(Boundary::default()),
+        ],
+        Set::Charge => vec![
+            Box::new(BarnesHutRepulsion::default()),
+            Box::new(EdgeSpring::default()),
+            Box::new(Boundary::default()),
+        ],
         Set::LinLog => vec![
             Box::new(LinLogForce::default()),
             Box::new(EdgeSpring::default()),
@@ -134,7 +150,7 @@ fn speeds_clamp_to_the_ruled_range_in_thousandths() {
 
 #[test]
 fn one_trajectory_at_every_speed_and_a_different_dt_differs() {
-    for set in [Set::LinLog, Set::Anneal] {
+    for set in [Set::Springs, Set::Charge, Set::LinLog, Set::Anneal] {
         // Two real-time runs agree bit for bit, or no comparison across
         // speeds would mean anything.
         let (frames_1x, ticks_1x, at_1x) = settle_at(set, Speed::REAL_TIME);
@@ -425,42 +441,6 @@ fn the_actor_draws_between_ticks_in_slow_motion() {
     );
 }
 
-/// `NodeExclusion`'s law summed in key order (the diagnostic's control).
-struct KeyOrderedExclusion(NodeExclusion);
-
-impl crate::Declared for KeyOrderedExclusion {
-    fn terms(&self) -> Vec<crate::Term> {
-        Vec::new()
-    }
-}
-
-impl Force for KeyOrderedExclusion {
-    fn apply(&self, ctx: &mut crate::ForceContext<'_>, _: f32) {
-        let mut nodes: Vec<_> = ctx
-            .bodies_by_node
-            .iter()
-            .filter_map(|(k, &h)| ctx.bodies.get(h).map(|b| (k.index(), h, b.translation())))
-            .collect();
-        nodes.sort_by_key(|n| n.0);
-        let law = &self.0;
-        let cutoff2 = law.cutoff * law.cutoff;
-        for i in 0..nodes.len() {
-            let mut force = rapier2d::prelude::Vector::ZERO;
-            for j in 0..nodes.len() {
-                let delta = nodes[i].2 - nodes[j].2;
-                if i == j || delta.length_squared() > cutoff2 {
-                    continue;
-                }
-                let dist = delta.length().max(law.min_distance);
-                force += delta / dist * (law.strength / (dist * dist));
-            }
-            if let Some(body) = ctx.bodies.get_mut(nodes[i].1) {
-                body.add_force(force, true);
-            }
-        }
-    }
-}
-
 type Make = Box<dyn Fn() -> Vec<Box<dyn Force>>>;
 
 /// `term` beside the springs set's edge springs and boundary.
@@ -478,15 +458,14 @@ fn keys() -> impl Iterator<Item = NodeKey> {
     (0..NODES).map(|i| NodeKey::new(i as usize))
 }
 
-/// Which forces are bit-reproducible run to run: five 1x runs of 600 ticks
-/// per force set, each against the first. A diagnostic, run by hand
-/// (`--ignored --nocapture`); it asserts its two controls and prints the rest.
+/// Every force set is bit-reproducible run to run: five 1x runs of 600 ticks
+/// each, against the first. Before key order, `NodeExclusion` moved all 24
+/// bodies by up to 33,559 ULP here and `BarnesHutRepulsion` by up to 69,959.
 #[test]
-#[ignore]
-fn reproducibility_by_force() {
+fn every_force_is_reproducible_run_to_run() {
     let sets: Vec<(&str, Make)> = vec![
         (
-            "EdgeSpring+Boundary (control)",
+            "EdgeSpring+Boundary",
             Box::new(|| {
                 vec![
                     Box::new(EdgeSpring::default()),
@@ -497,10 +476,6 @@ fn reproducibility_by_force() {
         (
             "NodeExclusion",
             with_springs(|| Box::new(NodeExclusion::default())),
-        ),
-        (
-            "NodeExclusion summed in key order (control)",
-            with_springs(|| Box::new(KeyOrderedExclusion(NodeExclusion::default()))),
         ),
         (
             "BarnesHutRepulsion (Charge)",
@@ -576,8 +551,6 @@ fn reproducibility_by_force() {
             .max()
             .unwrap();
         println!("{name}: {differing} of {NODES} bodies differ, worst {worst_ulp} ulp");
-        if name.ends_with("(control)") {
-            assert_eq!(differing, 0, "{name} is not reproducible");
-        }
+        assert_eq!(differing, 0, "{name} is not reproducible ({worst_ulp} ulp)");
     }
 }

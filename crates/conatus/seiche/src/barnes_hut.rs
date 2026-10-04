@@ -107,17 +107,16 @@ impl Default for BarnesHutRepulsion {
 
 impl Force for BarnesHutRepulsion {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
-        // Snapshot bodies in a stable (handle, position) order, then build the
-        // tree over the positions and apply each body's approximated repulsion.
-        let mut handles: Vec<RigidBodyHandle> = Vec::with_capacity(ctx.bodies_by_node.len());
-        let mut positions: Vec<Point2D<f32>> = Vec::with_capacity(ctx.bodies_by_node.len());
-        for &handle in ctx.bodies_by_node.values() {
-            if let Some(body) = ctx.bodies.get(handle) {
-                let t = body.translation();
-                handles.push(handle);
-                positions.push(Point2D::new(t.x, t.y));
-            }
-        }
+        // Snapshot bodies in key order, then build the tree over the positions
+        // and apply each body's approximated repulsion. Key order makes the
+        // tree, and so every sum, the same in every run (ruled 2026-10-04, "Sum
+        // in key order"; HashMap order differed by up to ~70,000 ULP).
+        let nodes = crate::laws::node_positions(ctx);
+        let handles: Vec<RigidBodyHandle> = nodes.iter().map(|&(_, handle, _)| handle).collect();
+        let positions: Vec<Point2D<f32>> = nodes
+            .iter()
+            .map(|&(_, _, t)| Point2D::new(t.x, t.y))
+            .collect();
         // k = 1.0 folds the ideal-edge-length term out, leaving
         // `strength * mass / distance` per (pseudo-)body.
         let forces = repulsion_forces(
