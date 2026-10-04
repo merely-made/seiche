@@ -108,6 +108,8 @@ pub enum PhysicsCommand {
     /// Set per-node physical materials (restitution / friction / density; see
     /// [`Simulation::set_node_materials`]). (Node body & face — material.)
     SetNodeMaterials(Vec<(NodeKey, NodeMaterial)>),
+    /// Hold node bodies on axes (see [`Simulation::set_axis_locks`]). (G7.)
+    SetAxisLocks(Vec<(NodeKey, crate::Axes)>),
     /// Add a non-graph scene-decoration body (shape, world position, drift velocity).
     /// (Physics scenes P1.)
     AddSceneBody(NodeCollider, Point2D<f32>, (f32, f32)),
@@ -166,6 +168,8 @@ pub struct ActorPhysics {
     settling: bool,
     /// The kinetic energy the last folded snapshot carried.
     energy: f32,
+    /// The rms speed the last folded snapshot carried.
+    speed: f32,
     command_epoch: u64,
 }
 
@@ -240,6 +244,7 @@ impl Physics {
             updates,
             settling,
             energy: 0.0,
+            speed: 0.0,
             command_epoch: 0,
         });
     }
@@ -308,9 +313,9 @@ impl Physics {
         }
     }
 
-    /// Install (or clear, with `None`) per-node **anchor** springs toward an
-    /// arrangement's slots — the layout as a participant in the sim rather than
-    /// an override of it. Position-preserving. (Arrangement as attractor.)
+    /// Install (or clear, with `None`) per-node **anchor** springs toward the
+    /// anchored items' arrangement positions (the anchored role, G7).
+    /// Position-preserving.
     pub fn set_anchor_force(&mut self, force: Option<crate::AnchorSpring>) {
         match self {
             Physics::Inline(p) => p.sim.set_anchor_force(force),
@@ -331,6 +336,16 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetForces(forces));
             },
+        }
+    }
+
+    /// The node bodies' rms speed (see [`Simulation::rms_speed`]): live
+    /// inline, the last folded snapshot's offloaded. (G7, F46.)
+    pub fn rms_speed(&self) -> f32 {
+        match self {
+            Physics::Inline(p) => p.sim.rms_speed(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.speed,
         }
     }
 
@@ -441,6 +456,18 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::SetNodeMaterials(materials));
+            },
+        }
+    }
+
+    /// Hold node bodies on the given axes (an encoded axis, F28); see
+    /// [`Simulation::set_axis_locks`]. (Dynamics grammar plan, G7.)
+    pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
+        match self {
+            Physics::Inline(p) => p.sim.set_axis_locks(locks),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetAxisLocks(locks));
             },
         }
     }
@@ -677,6 +704,7 @@ impl Physics {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
+                    p.speed = update.snapshot.speed;
                 }
             },
         }
@@ -710,6 +738,7 @@ impl Physics {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
+                    p.speed = update.snapshot.speed;
                 }
                 p.settling
             },
@@ -854,6 +883,7 @@ fn apply(
         PhysicsCommand::SetLinearDamping(damping) => sim.set_linear_damping(damping),
         PhysicsCommand::SetNodeColliders(colliders) => sim.set_node_colliders(colliders),
         PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),
+        PhysicsCommand::SetAxisLocks(locks) => sim.set_axis_locks(locks),
         PhysicsCommand::AddSceneBody(collider, position, velocity) => {
             sim.add_scene_body(collider, position, velocity);
         },

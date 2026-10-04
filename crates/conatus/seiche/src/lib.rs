@@ -144,6 +144,11 @@ pub use affinity_force::{
 pub mod anchor_force;
 pub use anchor_force::{AnchorSpring, DEFAULT_ANCHOR_SLACK, DEFAULT_ANCHOR_STIFFNESS};
 
+/// Arrangement roles: seeded, anchored or pinned, at recipe, group and item
+/// scope, and the axis locks an encoded axis takes. (Dynamics grammar plan, G7.)
+pub mod roles;
+pub use roles::{Axes, Role, RoleTable};
+
 /// Position-Based Fluids (PBF): our own small SPH liquid for the orrery (salva lags rapier badly,
 /// so we roll our own). The solver lives here; its seam onto the rigid world (loading + the two-way
 /// coupling) is [`Simulation`]'s fluid tier in [`fluid_coupling`]. (Physics scenes P4c.)
@@ -451,9 +456,9 @@ pub struct Simulation {
     /// affinity signal recomputes — and it applies in the same reset window as the built-ins.
     /// `None` = off (the default). (Graph signals — P4.)
     affinity_force: Option<AffinitySpring>,
-    /// Per-node springs toward arrangement-chosen slots: the layout as a
-    /// participant in the simulation rather than an override of it. Rebuilt
-    /// wholesale via [`set_anchor_force`](Self::set_anchor_force).
+    /// Per-node springs toward the anchored items' arrangement positions (the
+    /// anchored role, [`Role::Anchored`]). Rebuilt wholesale via
+    /// [`set_anchor_force`](Self::set_anchor_force).
     anchor_force: Option<AnchorSpring>,
     /// Optional host-injected staged evaluator (synchronous or lagged) + the
     /// node count at or above which [`NodeExclusion`] routes to it instead of
@@ -585,8 +590,8 @@ impl Simulation {
     }
 
     /// Remove every built-in force (the catalog's `Still`): bodies coast to
-    /// rest under damping alone, and the arrangement's anchors — if installed
-    /// — are all that pulls.
+    /// rest under damping alone, and anchored items' springs, if installed,
+    /// are all that pulls.
     pub fn clear_forces(&mut self) {
         self.forces.clear();
     }
@@ -601,6 +606,21 @@ impl Simulation {
             .get(&node)
             .and_then(|&handle| self.bodies.get(handle))
             .map(|body| body.linvel())
+    }
+
+    /// The node bodies' rms speed, `√(Σ |v|² / n)`, in world units a second:
+    /// a settle is this falling under a floor, whatever the bodies' masses
+    /// or count (dynamics grammar plan, F46). Zero with no bodies.
+    pub fn rms_speed(&self) -> f32 {
+        let (sum, n) = self
+            .bodies_by_node
+            .values()
+            .filter_map(|&handle| self.bodies.get(handle))
+            .fold((0.0_f32, 0_u32), |(sum, n), body| {
+                let v = body.linvel();
+                (sum + v.x * v.x + v.y * v.y, n + 1)
+            });
+        if n == 0 { 0.0 } else { (sum / n as f32).sqrt() }
     }
 
     /// Total kinetic energy of the node bodies, `Σ ½ m v²` — the number a
@@ -673,10 +693,9 @@ impl Simulation {
         self.affinity_force = force;
     }
 
-    /// Install (or clear, with `None`) per-node **anchor** springs toward an
-    /// arrangement's chosen slots. This is how a layout composes with running
-    /// physics: rather than overriding positions, it pulls toward them while
-    /// repulsion, edge springs, collisions, coupled fields, and drag keep
+    /// Install (or clear, with `None`) per-node **anchor** springs toward the
+    /// anchored items' arrangement positions: they return there while
+    /// repulsion, edge springs, collisions, coupled fields and drag keep
     /// acting. Position-preserving, like every other force swap; the host
     /// follows with a `settle` to let the new equilibrium take.
     pub fn set_anchor_force(&mut self, force: Option<AnchorSpring>) {
@@ -727,6 +746,7 @@ impl Simulation {
                 .map(|f| f.params().particle_radius)
                 .unwrap_or(0.0),
             energy: self.kinetic_energy(),
+            speed: self.rms_speed(),
             generation,
         }
     }
@@ -820,9 +840,8 @@ impl Simulation {
             if let Some(force) = &self.affinity_force {
                 force.apply(&mut ctx, dt);
             }
-            // Anchor springs last: the arrangement's pull sits on top of the
-            // graph's own forces, so stiffness reads as "how much does the
-            // arrangement win". (Arrangement as attractor.)
+            // Anchor springs last: an anchored item's return sits on top of
+            // the graph's own forces. (Arrangement roles, G7.)
             if let Some(force) = &self.anchor_force {
                 force.apply(&mut ctx, dt);
             }
