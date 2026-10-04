@@ -10,12 +10,17 @@
 //! window, beside the extent, the energy and the motion's character; then
 //! each term removed in turn.
 //!
-//! The candidate fixes (`Counter`'s forms, exclusion's reach, centring) live
-//! here only, as test forces: the law itself is unchanged until one is ruled.
+//! The candidate fixes (`Counter`'s forms, exclusion's reach, centring) are
+//! test forces here; the ruled one ("Frictionless orbits + centring",
+//! 2026-10-04) is the law's own `CounterDamping::Tangential`, which
+//! `Counter::Law` runs beside the test force it was built from.
 //! `diag_orbit_terms` is the diagnosis and its controls, `diag_orbit_candidates`
 //! and `diag_orbit_leading` one seed each, `diag_orbit_sweep` and
-//! `diag_orbit_sweep_refined` five seeds at both pages' dampings, and
-//! `diag_orbit_p2_detail` P2's seeds in full. Logs: `Code/testing/mere/orbit/`.
+//! `diag_orbit_sweep_refined` five seeds at both pages' dampings,
+//! `diag_orbit_p2_detail` P2's seeds in full, `diag_orbit_ruled` the ruled law
+//! over the sweep, and `diag_orbit_no_damping` the law at no host damping.
+//! Gravity's default test `tangential_counter_damping_keeps_the_orbits_bound`
+//! reuses this instrument. Logs: `Code/testing/mere/orbit/`.
 //!
 //! `cargo test -p seiche --lib laws::gravity::diag -- --ignored --nocapture`
 
@@ -25,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use euclid::default::Point2D;
 use rapier2d::prelude::*;
 
-use super::Gravity;
+use super::{CounterDamping, Gravity};
 use crate::{Boundary, Declared, Force, ForceContext, NodeExclusion, NodeKey, Simulation, TICK_DT};
 
 /// The P2 fixture's ten relations over its eleven nodes (G1's `P2_EDGES`).
@@ -232,6 +237,9 @@ pub(super) enum Counter {
     /// Every body's damping cancelled, and the law's own damping, at this
     /// rate, on radial motion and drift: Tangential without the host's say.
     Own(f32),
+    /// The law's own [`CounterDamping::Tangential`], to check it against the
+    /// test force it was built from.
+    Law,
     /// Tangential, prograde only: motion in the kick's sense is frictionless;
     /// radial, retrograde and drift motion are damped.
     Prograde,
@@ -252,7 +260,7 @@ pub(super) struct Recipe {
 impl Recipe {
     /// The catalog's Orbit as built today.
     pub fn catalog() -> Self {
-        let g = Gravity::new([]);
+        let g = Gravity::new([], CounterDamping::Full);
         Self {
             exclusion: Some(NodeExclusion::default()),
             strength: g.strength,
@@ -276,12 +284,12 @@ impl Recipe {
     }
 
     pub fn parts(&self, fixture: &Fixture) -> Vec<Part> {
-        let gravity = |strength: f32, kick: f32, counter: bool| Gravity {
+        let gravity = |strength: f32, kick: f32, counter: CounterDamping| Gravity {
             strength,
             softening: self.softening,
             orbital_kick: kick,
             counter_damping: counter,
-            ..Gravity::new(fixture.mass_map())
+            ..Gravity::new(fixture.mass_map(), counter)
         };
         let mut parts = Vec::new();
         if let Some(exclusion) = self.exclusion {
@@ -290,15 +298,25 @@ impl Recipe {
         if self.kick {
             parts.push(Part {
                 label: "kick",
-                force: Box::new(gravity(self.strength, 1.0, false)),
+                force: Box::new(gravity(self.strength, 1.0, CounterDamping::Off)),
                 writes_only: true,
             });
         }
         if self.gravitation {
-            parts.push(Part::new("gravitation", gravity(self.strength, 0.0, false)));
+            parts.push(Part::new(
+                "gravitation",
+                gravity(self.strength, 0.0, CounterDamping::Off),
+            ));
         }
         match self.counter {
-            Counter::Full => parts.push(Part::new("counter-damping", gravity(0.0, 0.0, true))),
+            Counter::Full => parts.push(Part::new(
+                "counter-damping",
+                gravity(0.0, 0.0, CounterDamping::Full),
+            )),
+            Counter::Law => parts.push(Part::new(
+                "counter-damping",
+                gravity(0.0, 0.0, CounterDamping::Tangential),
+            )),
             Counter::Brake => parts.push(Part::new(
                 "counter-damping",
                 Brake {
@@ -325,7 +343,10 @@ impl Recipe {
                 },
             )),
             Counter::Own(rate) => {
-                parts.push(Part::new("counter-damping", gravity(0.0, 0.0, true)));
+                parts.push(Part::new(
+                    "counter-damping",
+                    gravity(0.0, 0.0, CounterDamping::Full),
+                ));
                 parts.push(Part::new(
                     "radial damping",
                     Tangential {
@@ -1113,8 +1134,13 @@ const DAMPINGS: [f32; 2] = [2.5, 0.82];
 /// fixture and damping: the worst and median of the extent's largest
 /// multiple of its first second, and the character's means.
 pub(super) fn sweep(label: &str, recipe: &Recipe) {
+    sweep_at(label, recipe, &DAMPINGS);
+}
+
+/// [`sweep`] at the given dampings.
+pub(super) fn sweep_at(label: &str, recipe: &Recipe, dampings: &[f32]) {
     for fixture in [Fixture::p2(), Fixture::generated()] {
-        for damping in DAMPINGS {
+        for &damping in dampings {
             let reports: Vec<Report> = SPACINGS
                 .iter()
                 .map(|&spacing| {
@@ -1290,5 +1316,68 @@ fn diag_orbit_sweep_refined() {
         ),
     ] {
         sweep(label, &recipe);
+    }
+}
+
+/// The ruled Orbit as the catalog builds it (exclusion to two diameters,
+/// `CounterDamping::Tangential`, centring 0.02) beside the test force it was
+/// built from, over the sweep; then each fixture at no damping, the
+/// question the ruling left open.
+#[test]
+#[ignore = "diagnostic: prints the ruled Orbit over the sweep and at no damping"]
+fn diag_orbit_ruled() {
+    let catalog = Recipe::catalog();
+    let ruled = Recipe {
+        counter: Counter::Law,
+        centring: Some(0.02),
+        ..catalog.reach(2.0)
+    };
+    let tested = Recipe {
+        counter: Counter::Tangential,
+        ..ruled
+    };
+    sweep("ruled (Gravity's Tangential)", &ruled);
+    sweep("tested (the diagnostic's Tangential)", &tested);
+    for fixture in [Fixture::p2(), Fixture::generated()] {
+        run(
+            "ruled, no damping",
+            &fixture,
+            19.0,
+            0.0,
+            ruled.parts(&fixture),
+            120,
+        );
+        run(
+            "control: today's Orbit at no damping",
+            &fixture,
+            19.0,
+            0.0,
+            catalog.parts(&fixture),
+            120,
+        );
+    }
+}
+
+/// At no host damping, the open question: the ruled Orbit over the sweep,
+/// and the same with a floor under its radial settling (the law's own radial
+/// damping at the old page's 0.82 and the saved scenes' 0.7).
+#[test]
+#[ignore = "diagnostic: prints the ruled Orbit and floored variants at no damping"]
+fn diag_orbit_no_damping() {
+    let ruled = Recipe {
+        counter: Counter::Law,
+        centring: Some(0.02),
+        ..Recipe::catalog().reach(2.0)
+    };
+    sweep_at("ruled, no damping", &ruled, &[0.0]);
+    for floor in [0.82, 0.7] {
+        sweep_at(
+            &format!("ruled + radial floor {floor}, no damping"),
+            &Recipe {
+                counter: Counter::Own(floor),
+                ..ruled
+            },
+            &[0.0],
+        );
     }
 }
