@@ -602,6 +602,21 @@ impl Simulation {
             .map(|body| body.linvel())
     }
 
+    /// The node bodies' rms speed, `√(Σ |v|² / n)`, in world units a second:
+    /// a settle is this falling under a floor, whatever the bodies' masses
+    /// or count (dynamics grammar plan, F46). Zero with no bodies.
+    pub fn rms_speed(&self) -> f32 {
+        let (sum, n) = self
+            .bodies_by_node
+            .values()
+            .filter_map(|&handle| self.bodies.get(handle))
+            .fold((0.0_f32, 0_u32), |(sum, n), body| {
+                let v = body.linvel();
+                (sum + v.x * v.x + v.y * v.y, n + 1)
+            });
+        if n == 0 { 0.0 } else { (sum / n as f32).sqrt() }
+    }
+
     /// Total kinetic energy of the node bodies, `Σ ½ m v²` — the number a
     /// receipt reads to say a restless law is restless and a settling one
     /// settled.
@@ -725,6 +740,7 @@ impl Simulation {
                 .map(|f| f.params().particle_radius)
                 .unwrap_or(0.0),
             energy: self.kinetic_energy(),
+            speed: self.rms_speed(),
             generation,
         }
     }

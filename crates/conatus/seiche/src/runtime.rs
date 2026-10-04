@@ -168,6 +168,8 @@ pub struct ActorPhysics {
     settling: bool,
     /// The kinetic energy the last folded snapshot carried.
     energy: f32,
+    /// The rms speed the last folded snapshot carried.
+    speed: f32,
     command_epoch: u64,
 }
 
@@ -242,6 +244,7 @@ impl Physics {
             updates,
             settling,
             energy: 0.0,
+            speed: 0.0,
             command_epoch: 0,
         });
     }
@@ -333,6 +336,16 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetForces(forces));
             },
+        }
+    }
+
+    /// The node bodies' rms speed (see [`Simulation::rms_speed`]): live
+    /// inline, the last folded snapshot's offloaded. (G7, F46.)
+    pub fn rms_speed(&self) -> f32 {
+        match self {
+            Physics::Inline(p) => p.sim.rms_speed(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.speed,
         }
     }
 
@@ -679,6 +692,7 @@ impl Physics {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
+                    p.speed = update.snapshot.speed;
                 }
             },
         }
@@ -712,6 +726,7 @@ impl Physics {
                     view.apply_snapshot(&update.snapshot);
                     p.settling = update.settling;
                     p.energy = update.snapshot.energy;
+                    p.speed = update.snapshot.speed;
                 }
                 p.settling
             },

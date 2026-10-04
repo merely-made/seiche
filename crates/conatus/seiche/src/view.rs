@@ -77,6 +77,9 @@ pub struct LayoutSnapshot {
     /// reads the same figure an inline one does. (Physics catalog — the
     /// receipts' energy floor; 2026-09-04.)
     pub energy: f32,
+    /// The node bodies' rms speed at this layout, in world units a second:
+    /// the settle measure (dynamics grammar plan, F46).
+    pub speed: f32,
     /// The generation this layout was produced at (monotonic on the actor).
     pub generation: u64,
 }
