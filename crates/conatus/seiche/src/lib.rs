@@ -92,8 +92,8 @@ pub use forces::{Boundary, EdgeSpring, NodeExclusion};
 pub mod laws;
 pub mod overlays;
 pub use laws::{
-    Anneal, Boids, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold, Kuramoto,
-    LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
+    Anneal, Boids, CounterDamping, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold,
+    Kuramoto, LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
 };
 pub use overlays::{
     DegreeRepulsion, DepthGravity, DomainCluster, GravityLocus, GridSnap, HubGravity,
