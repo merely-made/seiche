@@ -169,6 +169,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
         PhysicsCommand::SetLinearDamping(damping) => sim.set_linear_damping(damping),
         PhysicsCommand::SetNodeColliders(colliders) => sim.set_node_colliders(colliders),
         PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),
+        PhysicsCommand::SetAxisLocks(locks) => sim.set_axis_locks(locks),
         PhysicsCommand::AddSceneBody(collider, position, velocity) => {
             sim.add_scene_body(collider, position, velocity);
         },
