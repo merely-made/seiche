@@ -9,9 +9,11 @@
 //! Every body attracts every other with `G · m_i · m_j / (d² + ε²)`, mass by
 //! degree (a hub is a sun), and on the first tick each body receives a
 //! tangential kick about the mass centre so it orbits rather than falls in.
-//! Nothing here settles: the law's whole point is motion, and a host that
-//! wants it to rest sets the damping high or switches law. What it reveals is
-//! hierarchy as gravity — leaves circle their hubs, hubs circle each other.
+//! The orbits never settle: the law's whole point is motion. Under
+//! [`CounterDamping::Tangential`] only the orbital motion is frictionless, so
+//! energy another force adds (exclusion's push, a drag) leaves as radial motion
+//! the host's damping settles, and the system stays bound. What it reveals is
+//! hierarchy as gravity — hubs sink inside, leaves circle them.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -25,6 +27,25 @@ use crate::{
 
 use super::node_positions;
 
+/// How [`Gravity`] meets the host's linear damping (the "inertia" setting).
+/// Gravity conserves energy only in a frictionless world; damped, every leaf
+/// spirals into its hub within seconds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CounterDamping {
+    /// No drive: the host's damping acts on every body.
+    Off,
+    /// Each body's damping cancelled along its whole velocity, a frictionless
+    /// world: energy any other force adds stays, and an unbound body coasts.
+    Full,
+    /// Only each body's tangential motion about the gravitational mass centre,
+    /// moving with that centre, is frictionless; radial motion and the
+    /// system's drift settle under the host's damping, and never slower than
+    /// [`Gravity::radial_floor`], so orbits circularize and keep going.
+    /// Orbit's (ruled 2026-10-04, "Frictionless orbits + centring", "Radial
+    /// floor at 0.82").
+    Tangential,
+}
+
 /// N-body attraction with an orbital kick.
 #[derive(Debug)]
 pub struct Gravity {
@@ -36,24 +57,35 @@ pub struct Gravity {
     /// Tangential speed given on the first tick, per unit distance from the
     /// mass centre; `0.0` lets the graph simply fall together.
     pub orbital_kick: f32,
-    /// Cancel each body's linear damping with an equal drive along its
-    /// velocity. Gravity conserves energy only in a frictionless world; a
-    /// host's damping (the "inertia" setting) would otherwise spiral every
-    /// leaf into its hub within seconds. On by default: an orbit is the point.
-    pub counter_damping: bool,
+    /// Which part of each body's motion the host's damping is cancelled on.
+    pub counter_damping: CounterDamping,
+    /// Under [`CounterDamping::Tangential`], the slowest rate (per second, as
+    /// the host's linear damping is) at which radial motion and drift settle:
+    /// below it the law damps them up to it itself, so a host damping of 0
+    /// does not leave the blow-out to breathe. `0.0` leaves them to the host.
+    pub radial_floor: f32,
     kicked: Mutex<bool>,
 }
 
 impl Gravity {
+    /// [`radial_floor`](Self::radial_floor)'s default: the old page's damping
+    /// (ruled 2026-10-04, "Radial floor at 0.82").
+    pub const RADIAL_FLOOR: f32 = 0.82;
+
     /// Masses per node; a node absent here weighs `1.0`. A host typically
-    /// passes `degree + 1`.
-    pub fn new(masses: impl IntoIterator<Item = (NodeKey, f32)>) -> Self {
+    /// passes `degree + 1`. The counter-damping is the caller's choice: there
+    /// is no default, so no caller's meaning changes silently (seiche 0.0.6).
+    pub fn new(
+        masses: impl IntoIterator<Item = (NodeKey, f32)>,
+        counter_damping: CounterDamping,
+    ) -> Self {
         Self {
             masses: masses.into_iter().collect(),
             strength: 9_000.0,
             softening: 24.0,
             orbital_kick: 1.0,
-            counter_damping: true,
+            counter_damping,
+            radial_floor: Self::RADIAL_FLOOR,
             kicked: Mutex::new(false),
         }
     }
@@ -127,15 +159,47 @@ impl Force for Gravity {
                 accelerations[j] -= direction * (self.strength * masses[i] / dist2);
             }
         }
-        for (i, (_, handle, _)) in nodes.iter().enumerate() {
+        // The system's drift, mass-weighted as the centre is: Tangential
+        // measures each body's orbital motion against it.
+        let drift = match self.counter_damping {
+            CounterDamping::Tangential => {
+                nodes
+                    .iter()
+                    .zip(&masses)
+                    .fold(Vector::ZERO, |acc, ((_, handle, _), m)| {
+                        acc + ctx.bodies.get(*handle).map_or(Vector::ZERO, |b| b.linvel()) * *m
+                    })
+                    / total
+            },
+            CounterDamping::Off | CounterDamping::Full => Vector::ZERO,
+        };
+        for (i, (_, handle, position)) in nodes.iter().enumerate() {
             if let Some(body) = ctx.bodies.get_mut(*handle) {
                 let inertial = body.mass().max(1e-3);
-                let mut force = accelerations[i] * inertial;
-                if self.counter_damping {
-                    // rapier applies `v /= 1 + dt·d` each step; a force of
-                    // `m·d·v` puts back what that takes, to first order.
-                    force += body.linvel() * (body.linear_damping() * inertial);
-                }
+                // rapier applies `v /= 1 + dt·d` each step; a force of `m·d·v`
+                // puts back what that takes, to first order.
+                let damping = body.linear_damping();
+                let velocity = body.linvel();
+                let drive = match self.counter_damping {
+                    CounterDamping::Off => Vector::ZERO,
+                    CounterDamping::Full => velocity * damping,
+                    CounterDamping::Tangential => {
+                        let radius = *position - centre;
+                        let r = radius.length();
+                        let orbital = if r < 1e-3 {
+                            Vector::ZERO
+                        } else {
+                            let tangent = Vector::new(-radius.y, radius.x) / r;
+                            tangent * (velocity - drift).dot(tangent)
+                        };
+                        // What settles (radial motion and drift) settles at
+                        // the host's damping, or at the floor where that is
+                        // slower.
+                        let short = (self.radial_floor - damping).max(0.0);
+                        orbital * damping - (velocity - orbital) * short
+                    },
+                };
+                let force = (accelerations[i] + drive) * inertial;
                 body.add_force(force, true);
             }
         }
@@ -175,10 +239,11 @@ impl Declared for Gravity {
     }
 
     fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
+        let off = CounterDamping::Off;
         let (strength, counter_damping, orbital_kick) = match term {
-            0 => (self.strength, false, 0.0),
+            0 => (self.strength, off, 0.0),
             1 => (0.0, self.counter_damping, 0.0),
-            2 => (0.0, false, self.orbital_kick),
+            2 => (0.0, off, self.orbital_kick),
             _ => return None,
         };
         let kicked = *self
@@ -191,6 +256,7 @@ impl Declared for Gravity {
             softening: self.softening,
             orbital_kick,
             counter_damping,
+            radial_floor: self.radial_floor,
             kicked: Mutex::new(kicked),
         }))
     }
@@ -207,10 +273,100 @@ impl Declared for Gravity {
 }
 
 #[cfg(test)]
+mod diag;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::Simulation;
     use euclid::default::Point2D;
+
+    /// Tangential's claim, on the P2 fixture from the boot Spiral's shape under
+    /// the tree page's damping, composed as the catalog composes Orbit
+    /// (exclusion to two node diameters, centring 0.02): the blow-out leaves
+    /// as radial motion, so over 120 s the extent stays within 3x its first
+    /// second's and the motion stays an orbit (the bar the fork was put
+    /// with). The control is the same set under `Full`, which keeps the
+    /// blow-out and breathes instead of orbiting.
+    #[test]
+    fn tangential_counter_damping_keeps_the_orbits_bound() {
+        use super::diag::{Counter, Fixture, Recipe, run_quietly};
+        let fixture = Fixture::p2();
+        let ruled = Recipe {
+            counter: Counter::Law,
+            centring: Some(0.02),
+            ..Recipe::catalog().reach(2.0)
+        };
+        let control = Recipe {
+            counter: Counter::Full,
+            ..ruled
+        };
+        let read = |recipe: &Recipe| {
+            run_quietly("", &fixture, 19.0, 2.5, recipe.parts(&fixture), 120, false)
+        };
+        let orbit = read(&ruled);
+        assert!(
+            orbit.max_ratio < 3.0 && orbit.min_energy > 1.0,
+            "bound and moving: x{:.2}, energy at least {:.0}",
+            orbit.max_ratio,
+            orbit.min_energy
+        );
+        assert!(
+            orbit.mean_tangential > 0.8 && orbit.mean_coherence > 0.8 && orbit.revolutions > 1.0,
+            "an orbit: tangential {:.2}, coherence {:.2}, revolutions {:.2}",
+            orbit.mean_tangential,
+            orbit.mean_coherence,
+            orbit.revolutions
+        );
+        let breathing = read(&control);
+        assert!(
+            breathing.mean_tangential < 0.8,
+            "the control keeps the blow-out: tangential {:.2}",
+            breathing.mean_tangential
+        );
+    }
+
+    /// The radial floor's claim (ruled 2026-10-04, "Radial floor at 0.82"):
+    /// at no host damping the composition above still settles the blow-out
+    /// and orbits. The control is the same law with the floor at 0, which
+    /// leaves the blow-out to breathe and fails on tangential share.
+    #[test]
+    fn the_radial_floor_keeps_the_orbits_at_no_damping() {
+        use super::diag::{Counter, Fixture, Recipe, run_quietly};
+        let fixture = Fixture::p2();
+        let ruled = Recipe {
+            counter: Counter::Law,
+            centring: Some(0.02),
+            ..Recipe::catalog().reach(2.0)
+        };
+        assert_eq!(ruled.radial_floor, Gravity::RADIAL_FLOOR);
+        let read = |recipe: &Recipe| {
+            run_quietly("", &fixture, 19.0, 0.0, recipe.parts(&fixture), 120, false)
+        };
+        let orbit = read(&ruled);
+        assert!(
+            orbit.max_ratio < 3.0 && orbit.min_energy > 1.0,
+            "bound and moving: x{:.2}, energy at least {:.0}",
+            orbit.max_ratio,
+            orbit.min_energy
+        );
+        assert!(
+            orbit.mean_tangential > 0.8 && orbit.mean_coherence > 0.8 && orbit.revolutions > 1.0,
+            "an orbit: tangential {:.2}, coherence {:.2}, revolutions {:.2}",
+            orbit.mean_tangential,
+            orbit.mean_coherence,
+            orbit.revolutions
+        );
+        let unfloored = read(&Recipe {
+            radial_floor: 0.0,
+            ..ruled
+        });
+        assert!(
+            unfloored.mean_tangential < 0.8,
+            "the control breathes: tangential {:.2}",
+            unfloored.mean_tangential
+        );
+    }
 
     /// The law's claim: a hub with leaves keeps moving — kinetic energy stays
     /// above a floor after 600 ticks — where Springs would have come to rest.
@@ -234,7 +390,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, &k)| (k, if i == 0 { 12.0 } else { 1.0 }));
-        sim.set_forces(vec![Box::new(Gravity::new(masses))]);
+        sim.set_forces(vec![Box::new(Gravity::new(masses, CounterDamping::Full))]);
         let mut energies = Vec::new();
         for tick in 0..600 {
             sim.tick(1.0 / 60.0);

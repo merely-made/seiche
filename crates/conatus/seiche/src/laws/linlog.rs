@@ -484,23 +484,21 @@ mod tests {
                 settle(springs()),
             );
         }
-        // Orbit beside it: masses by degree + 1, with and without exclusion.
+        // Orbit's first build beside it (2026-10-03, before its retune):
+        // masses by degree + 1, damping cancelled along the whole velocity,
+        // with and without the default exclusion. Orbit's own lane keeps the
+        // retuned set's readings.
         let mut degree = [1.0f32; 11];
         for &(a, b) in &FIXTURE_PAIRS {
             degree[a] += 1.0;
             degree[b] += 1.0;
         }
         let masses = || (0..11).map(NodeKey::new).zip(degree).collect::<Vec<_>>();
+        let full = || Box::new(crate::Gravity::new(masses(), crate::CounterDamping::Full));
         run(
-            "orbit (exclusion + gravity, as the catalog builds it)",
-            vec![
-                Box::new(NodeExclusion::default()),
-                Box::new(crate::Gravity::new(masses())),
-            ],
+            "orbit's first build (exclusion + gravity, full counter-damping)",
+            vec![Box::new(NodeExclusion::default()), full()],
         );
-        run(
-            "orbit without exclusion",
-            vec![Box::new(crate::Gravity::new(masses()))],
-        );
+        run("full counter-damping without exclusion (today's Gravity)", vec![full()]);
     }
 }
