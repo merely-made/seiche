@@ -4,7 +4,8 @@
 //! The dial's receipts: one trajectory at every speed (two 1x runs agreeing
 //! first, and a different-dt run as the positive control), settle budgets in
 //! ticks, slow motion drawn between ticks, and fast-forward under a budget
-//! (with a cheaper tick the budget does not bind as the control).
+//! (with a cheaper tick the budget does not bind as the control), inside it
+//! on a coarse clock only with the gate's margin (without, it overruns).
 //!
 //! Bit identity needs reproducible forces. `NodeExclusion` and
 //! `BarnesHutRepulsion` summed in `HashMap` order until 2026-10-04 ("Sum in
@@ -310,8 +311,87 @@ fn costly(us: u64, budget: Duration, speed: f32) -> (Physics, LayoutView) {
     physics.set_step_budget(Some(StepBudget {
         per_frame: budget,
         clock: virtual_clock,
+        margin: Duration::ZERO,
     }));
     (physics, view)
+}
+
+/// The virtual clock read in 100 us steps, as a browser's `performance.now`.
+fn grained_clock() -> Duration {
+    Duration::from_micros(NOW_US.with(Cell::get) / 100 * 100)
+}
+
+/// A force costing `base` us of virtual time a tick, and every `every`th
+/// tick `dear`.
+struct Uneven {
+    base: u64,
+    dear: u64,
+    every: u64,
+    ticks: Cell<u64>,
+}
+
+impl crate::Declared for Uneven {
+    fn terms(&self) -> Vec<crate::Term> {
+        Vec::new()
+    }
+}
+
+impl Force for Uneven {
+    fn apply(&self, _: &mut crate::ForceContext<'_>, _: f32) {
+        let tick = self.ticks.get() + 1;
+        self.ticks.set(tick);
+        let us = if tick % self.every == 0 {
+            self.dear
+        } else {
+            self.base
+        };
+        NOW_US.with(|now| now.set(now.get() + us));
+    }
+}
+
+/// Twelve 50x frames under an 8 ms budget on the grained clock, the 40th
+/// tick of each dearer: per frame, how far stepping ran past the budget.
+fn overruns_at(margin: Duration) -> Vec<i64> {
+    NOW_US.with(|now| now.set(0));
+    let mut sim = sim(Set::LinLog);
+    sim.add_force(Uneven {
+        base: 200,
+        dear: 400,
+        every: 40,
+        ticks: Cell::new(0),
+    });
+    let mut view = sim.view();
+    let mut physics = Physics::inline(sim, TICKS);
+    physics.set_speed(Speed::from_factor(50.0));
+    let budget = Duration::from_millis(8);
+    physics.set_step_budget(Some(StepBudget {
+        per_frame: budget,
+        clock: grained_clock,
+        margin,
+    }));
+    let config = ElapsedStepConfig {
+        max_elapsed: TICK_DURATION * 4,
+        max_steps: 3,
+    };
+    (0..12)
+        .map(|_| {
+            let report = physics.advance_elapsed(&mut view, TICK_DURATION, config);
+            assert!(report.budget_bound);
+            report.compute.unwrap().as_micros() as i64 - budget.as_micros() as i64
+        })
+        .collect()
+}
+
+/// A tick the forecast saw at 200 us reads 400 (ruled 2026-10-04, "Gate
+/// keeps a forecast margin"): with a margin of two clock steps every frame
+/// stays within its budget plus the clock's 100 us grain. Control: with the
+/// margin at 0 every frame admits that tick last and runs 200 us over.
+#[test]
+fn the_margin_keeps_a_dearer_tick_inside_the_budget_and_the_grain() {
+    let kept = overruns_at(Duration::from_micros(200));
+    assert!(kept.iter().all(|&over| over <= 100), "{kept:?}");
+    let unkept = overruns_at(Duration::ZERO);
+    assert!(unkept.iter().all(|&over| over == 200), "{unkept:?}");
 }
 
 #[test]

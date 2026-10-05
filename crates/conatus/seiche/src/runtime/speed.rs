@@ -81,11 +81,15 @@ impl Default for Speed {
 }
 
 /// A compute budget for one frame's ticks above real time, measured on the
-/// host's monotonic clock. The first tick a frame owes always runs.
+/// host's monotonic clock. The first tick a frame owes always runs; another
+/// runs only while the time left covers the forecast tick plus `margin`
+/// (ruled 2026-10-04, "Gate keeps a forecast margin"), the host's allowance
+/// for a tick reading dearer than the forecast it was admitted on.
 #[derive(Clone, Copy, Debug)]
 pub struct StepBudget {
     pub per_frame: Duration,
     pub clock: fn() -> Duration,
+    pub margin: Duration,
 }
 
 /// A monotonic clock for native hosts' budgets (not on `wasm32-unknown-unknown`,
@@ -276,7 +280,8 @@ pub(super) fn step_owed(
     {
         if let (Some(budget), Some(start)) = (budget, start)
             && out.steps >= floor.max(1)
-            && (budget.clock)().saturating_sub(start) + pace.forecast > budget.per_frame
+            && (budget.clock)().saturating_sub(start) + pace.forecast + budget.margin
+                > budget.per_frame
         {
             out.budget_bound = true;
             break;
@@ -363,7 +368,8 @@ pub(super) fn actor_interval(
     }
 }
 
-/// The actor's budget: `per_frame`, or its whole interval, on its own clock.
+/// The actor's budget: `per_frame`, or its whole interval, on its own clock,
+/// which reads `Instant`, fine enough to need no margin.
 #[cfg(feature = "actor")]
 pub(super) fn actor_budget(per_frame: Option<Duration>) -> StepBudget {
     fn clock() -> Duration {
@@ -373,6 +379,7 @@ pub(super) fn actor_budget(per_frame: Option<Duration>) -> StepBudget {
     StepBudget {
         per_frame: per_frame.unwrap_or(TICK_DURATION),
         clock,
+        margin: Duration::ZERO,
     }
 }
 
