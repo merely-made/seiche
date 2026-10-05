@@ -57,7 +57,7 @@ pub use boids::Boids;
 pub use density::{
     Density, DensityDomain, DensityFlowState, DensityGrid, DensityMedium, DensityPass, DensityStop,
 };
-pub use gravity::Gravity;
+pub use gravity::{CounterDamping, Gravity};
 pub use hold::Hold;
 pub use kuramoto::Kuramoto;
 pub use linlog::LinLogForce;
