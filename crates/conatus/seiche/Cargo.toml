@@ -35,8 +35,8 @@ armillary = { path = "../../armillary", version = "0.1.1", optional = true }
 # resident lane, and the wgpu handle types a host passes in.
 conatus = { path = "../conatus", version = "0.1.0", features = ["resident"], optional = true }
 wgpu = { version = "30", default-features = false, optional = true }
-burn = { version = "0.22.0-pre.2", default-features = false, features = ["std"], optional = true }
-burn-wgpu = { version = "0.22.0-pre.2", default-features = false, features = ["std", "autotune"], optional = true }
+burn = { version = "=0.22.0-pre.4", default-features = false, features = ["std"], optional = true }
+burn-wgpu = { version = "=0.22.0-pre.4", default-features = false, features = ["std", "autotune"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }

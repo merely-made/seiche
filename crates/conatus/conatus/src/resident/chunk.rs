@@ -24,10 +24,10 @@ use std::{
 
 use burn::tensor::{DType, Shape, Tensor};
 use burn_wgpu::{
-    CubeTensor, RuntimeOptions, Wgpu, WgpuDevice, WgpuRuntime, WgpuSetup, init_device,
+    CubeTensor, RuntimeOptions, Wgpu, WgpuDevice, WgpuSetup, init_device,
 };
 use bytemuck::Pod;
-use cubecl::{Runtime, client::ComputeClient, server::Handle};
+use cubecl::{client::Client, server::Handle};
 
 /// Burn's view of one resident `f32` channel plane.
 pub type ResidentTensor = Tensor<3>;
@@ -397,7 +397,7 @@ impl BurnTensorView {
 /// [`Self::from_registered_device`] instead.
 #[derive(Clone)]
 pub struct ResidentClient {
-    compute: ComputeClient<WgpuRuntime>,
+    compute: Client,
     device: WgpuDevice,
     /// The host's wgpu device, when this client was built from it, so a
     /// reader can poll map callbacks without blocking (see
@@ -451,7 +451,7 @@ impl ResidentClient {
     }
 
     pub fn from_registered_device(device: WgpuDevice) -> Self {
-        let compute = WgpuRuntime::client(&device);
+        let compute = cubecl::Device::from(device.clone()).client();
         Self {
             compute,
             device,
@@ -465,7 +465,7 @@ impl ResidentClient {
     /// Public because the field lane allocates its own buffers on the
     /// same client the chunk bundles use: one allocator is what lets a
     /// kernel pass and a tensor pass meet without a bridge.
-    pub fn compute_client(&self) -> &ComputeClient<WgpuRuntime> {
+    pub fn compute_client(&self) -> &Client {
         &self.compute
     }
 
@@ -796,9 +796,9 @@ impl<I> ResidentChunk<I> {
             });
         }
         let allocation = self.allocation(&plane.handle)?;
-        let primitive = CubeTensor::<WgpuRuntime>::new_contiguous(
+        let primitive = CubeTensor::new_contiguous(
             self.compute().clone(),
-            self.client.device.clone(),
+            self.client.device.clone().into(),
             Shape::new(plane.layout.shape),
             plane.handle.clone(),
             DType::F32,
@@ -813,7 +813,7 @@ impl<I> ResidentChunk<I> {
         })
     }
 
-    fn compute(&self) -> &ComputeClient<WgpuRuntime> {
+    fn compute(&self) -> &Client {
         &self.client.compute
     }
 
@@ -826,7 +826,7 @@ impl<I> ResidentChunk<I> {
     fn allocation(&self, handle: &Handle) -> Result<BufferIdentity, ResidentChunkError> {
         let managed = self
             .compute()
-            .get_resource(handle.clone())
+            .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(handle.clone())
             .map_err(|error| ResidentChunkError::Resource(error.to_string()))?;
         let resource = managed.resource();
         Ok(BufferIdentity {
