@@ -58,7 +58,9 @@ mod speed;
 use actor::{ActorState, run};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use speed::monotonic_clock;
-pub use speed::{PaceStats, Speed, StepBudget};
+pub use speed::{
+    DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
+};
 
 #[cfg(test)]
 mod pause_tests;
@@ -187,6 +189,8 @@ pub struct ActorPhysics {
     command_epoch: u64,
     /// The simulation speed set (the dial), not the bodies' rms speed.
     dial: Speed,
+    /// The budget the host last set, as it gave it.
+    budget: Option<StepBudget>,
     /// The pace the last folded snapshot carried.
     pace: PaceStats,
 }
@@ -278,6 +282,7 @@ impl Physics {
             speed: 0.0,
             command_epoch: 0,
             dial: speed,
+            budget: inline.pace.budget,
             pace,
         });
     }
@@ -315,10 +320,20 @@ impl Physics {
             Physics::Inline(p) => p.pace.budget = budget,
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
+                p.budget = budget;
                 p.handle.command(PhysicsCommand::SetStepBudget(
                     budget.map(|budget| budget.per_frame),
                 ));
             },
+        }
+    }
+
+    /// The step budget last set, as the host gave it.
+    pub fn step_budget(&self) -> Option<StepBudget> {
+        match self {
+            Physics::Inline(p) => p.pace.budget,
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.budget,
         }
     }
 

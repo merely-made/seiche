@@ -92,6 +92,58 @@ pub struct StepBudget {
     pub margin: Duration,
 }
 
+/// The share of the display's frame period a frame's ticks above real time
+/// may spend unless the host asks otherwise (ruled 2026-10-04, "Target + Max,
+/// budget as frame share": 50%).
+pub const DEFAULT_BUDGET_SHARE: f64 = 0.5;
+
+/// 60 Hz's frame period: what a host that cannot learn its display's rate
+/// takes it to be, and the longest a browser's inferred period may be (ruled
+/// 2026-10-04, "Known rate, else capped").
+pub const FALLBACK_DISPLAY_PERIOD: Duration = Duration::from_nanos(16_666_667);
+
+/// The frame period of a display refreshing at `millihertz`, as winit's
+/// `MonitorHandle::refresh_rate_millihertz` reports it; 60 Hz's when the rate
+/// is unknown or zero.
+pub fn display_period(millihertz: Option<u32>) -> Duration {
+    millihertz
+        .filter(|&rate| rate > 0)
+        .map_or(FALLBACK_DISPLAY_PERIOD, |rate| {
+            Duration::from_nanos(1_000_000_000_000 / u64::from(rate))
+        })
+}
+
+impl StepBudget {
+    /// `share` of a display's frame `period`, measured on `clock`, the gate
+    /// keeping `margin` past the forecast tick.
+    pub fn of_period(
+        period: Duration,
+        share: f64,
+        clock: fn() -> Duration,
+        margin: Duration,
+    ) -> Self {
+        Self {
+            per_frame: period.mul_f64(share),
+            clock,
+            margin,
+        }
+    }
+
+    /// A native host's budget for a display refreshing at `millihertz`
+    /// (60 Hz's when unknown): the default share of its period on the
+    /// monotonic clock, which reads finely enough to need no margin (ruled
+    /// 2026-10-04, "Mere entry point, then turnstone").
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub fn for_display(millihertz: Option<u32>) -> Self {
+        Self::of_period(
+            display_period(millihertz),
+            DEFAULT_BUDGET_SHARE,
+            monotonic_clock,
+            Duration::ZERO,
+        )
+    }
+}
+
 /// A monotonic clock for native hosts' budgets (not on `wasm32-unknown-unknown`,
 /// where the host passes its own, e.g. `performance.now`).
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

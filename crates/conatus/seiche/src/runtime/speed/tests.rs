@@ -20,7 +20,10 @@ use std::time::Duration;
 use euclid::default::Point2D;
 
 use super::super::{ElapsedStepConfig, LayoutView, Physics};
-use super::{Speed, StepBudget, TICK_DT, TICK_DURATION};
+use super::{
+    DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, Speed, StepBudget, TICK_DT, TICK_DURATION,
+    display_period,
+};
 use crate::{
     Anneal, BarnesHutRepulsion, Boundary, EdgeSpring, Force, LinLogForce, NodeExclusion, NodeKey,
     Simulation,
@@ -669,5 +672,47 @@ fn every_force_is_reproducible_run_to_run() {
             .unwrap();
         println!("{name}: {differing} of {NODES} bodies differ, worst {worst_ulp} ulp");
         assert_eq!(differing, 0, "{name} is not reproducible ({worst_ulp} ulp)");
+    }
+}
+
+/// A native host's budget from its display's refresh rate (ruled 2026-10-04,
+/// "Mere entry point, then turnstone"): half the period winit reports, in
+/// millihertz, and 60 Hz's when the rate is unknown; the physics hands back
+/// the budget it was given, inline or offloaded.
+#[test]
+fn a_budget_from_the_display_refresh_rate() {
+    let us = |duration: Duration| duration.as_micros();
+    assert_eq!(us(display_period(Some(60_000))), 16_666);
+    assert_eq!(us(display_period(Some(120_000))), 8_333);
+    assert_eq!(us(display_period(Some(144_000))), 6_944);
+    assert_eq!(us(display_period(Some(165_000))), 6_060);
+    assert_eq!(display_period(Some(59_940)).as_nanos(), 16_683_350);
+    assert_eq!(display_period(None), FALLBACK_DISPLAY_PERIOD);
+    assert_eq!(display_period(Some(0)), FALLBACK_DISPLAY_PERIOD);
+    assert_eq!(DEFAULT_BUDGET_SHARE, 0.5);
+
+    let budget = StepBudget::for_display(Some(165_000));
+    assert_eq!(us(budget.per_frame), 3_030);
+    assert_eq!(budget.margin, Duration::ZERO);
+    assert_eq!(us(StepBudget::for_display(None).per_frame), 8_333);
+    let quarter = StepBudget::of_period(
+        display_period(Some(144_000)),
+        0.25,
+        virtual_clock,
+        Duration::from_micros(200),
+    );
+    assert_eq!((us(quarter.per_frame), us(quarter.margin)), (1_736, 200));
+
+    let sim = sim(Set::LinLog);
+    let mut physics = Physics::inline(sim, TICKS);
+    assert!(physics.step_budget().is_none());
+    physics.set_step_budget(Some(budget));
+    assert_eq!(physics.step_budget().map(|b| us(b.per_frame)), Some(3_030));
+    #[cfg(feature = "actor")]
+    {
+        physics.offload(std::sync::Arc::new(|| {}));
+        assert_eq!(physics.step_budget().map(|b| us(b.per_frame)), Some(3_030));
+        physics.set_step_budget(Some(StepBudget::for_display(Some(60_000))));
+        assert_eq!(physics.step_budget().map(|b| us(b.per_frame)), Some(8_333));
     }
 }

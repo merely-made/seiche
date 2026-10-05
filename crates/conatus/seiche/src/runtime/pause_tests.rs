@@ -65,6 +65,7 @@ fn stale_actor_snapshots_cannot_undo_reseed_or_halt() {
         speed: 0.0,
         command_epoch: 0,
         dial: Speed::REAL_TIME,
+        budget: None,
         pace: PaceStats::default(),
     });
     let mut sim = Simulation::new();

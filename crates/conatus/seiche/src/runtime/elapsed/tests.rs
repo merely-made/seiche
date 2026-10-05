@@ -221,6 +221,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
         speed: 0.0,
         command_epoch: 0,
         dial: crate::Speed::REAL_TIME,
+        budget: None,
         pace: crate::PaceStats::default(),
     });
     let mut sim = Simulation::new();
