@@ -716,3 +716,51 @@ fn a_budget_from_the_display_refresh_rate() {
         assert_eq!(physics.step_budget().map(|b| us(b.per_frame)), Some(8_333));
     }
 }
+
+/// "Only ticks past the floor" (ruled 2026-10-05): the report names the
+/// ticks the gate admitted past the 1x floor and when the last ended, the
+/// time the budget bounds. A floor dearer than the budget admits none, its
+/// overrun the floor's own; a tick the gate admitted that runs long ends past
+/// the budget and shows there (the planted control).
+#[test]
+fn the_report_bounds_only_the_ticks_the_gate_admitted() {
+    let config = ElapsedStepConfig {
+        max_elapsed: TICK_DURATION * 4,
+        max_steps: 3,
+    };
+    let budget = Duration::from_millis(8);
+    // 1 ms ticks: the floor's one, then seven the gate admits, ending at 8 ms.
+    let (mut physics, mut view) = costly(1_000, budget, 50.0);
+    let report = physics.advance_elapsed(&mut view, TICK_DURATION, config);
+    assert_eq!((report.steps, report.admitted), (8, 7));
+    assert_eq!(report.admitted_until, Some(budget));
+
+    // A floor of three 20 ms ticks: 60 ms of stepping, none of it admitted.
+    let (mut physics, mut view) = costly(20_000, budget, 50.0);
+    let report = physics.advance_elapsed(&mut view, TICK_DURATION * 3, config);
+    assert_eq!((report.steps, report.admitted), (3, 0));
+    assert_eq!(report.admitted_until, None);
+    assert_eq!(report.compute, Some(Duration::from_millis(60)));
+
+    // Planted: the fifth tick costs 5 ms. The gate admits it with 4 ms left
+    // and a 1 ms forecast, and it ends at 9 ms, a millisecond past.
+    NOW_US.with(|now| now.set(0));
+    let mut sim = sim(Set::LinLog);
+    sim.add_force(Uneven {
+        base: 1_000,
+        dear: 5_000,
+        every: 5,
+        ticks: Cell::new(0),
+    });
+    let mut view = sim.view();
+    let mut physics = Physics::inline(sim, TICKS);
+    physics.set_speed(Speed::from_factor(50.0));
+    physics.set_step_budget(Some(StepBudget {
+        per_frame: budget,
+        clock: virtual_clock,
+        margin: Duration::ZERO,
+    }));
+    let report = physics.advance_elapsed(&mut view, TICK_DURATION, config);
+    assert_eq!((report.steps, report.admitted), (5, 4));
+    assert_eq!(report.admitted_until, Some(Duration::from_millis(9)));
+}

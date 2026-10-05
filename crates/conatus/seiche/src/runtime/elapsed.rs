@@ -49,6 +49,12 @@ pub struct ElapsedStepReport {
     pub budget_bound: bool,
     /// Time spent stepping, when a budget's clock is installed.
     pub compute: Option<Duration>,
+    /// Ticks the step budget's gate admitted past the 1x floor, and when the
+    /// last of them ended: the time the budget bounds (ruled 2026-10-05,
+    /// "Only ticks past the floor"). The floor's own ticks run whatever the
+    /// budget, so fast-forward is never slower than 1x.
+    pub admitted: u32,
+    pub admitted_until: Option<Duration>,
 }
 
 impl Physics {
@@ -123,6 +129,8 @@ impl Physics {
                     owed_steps,
                     budget_bound: stepped.budget_bound,
                     compute: stepped.compute,
+                    admitted: stepped.admitted,
+                    admitted_until: stepped.admitted_until,
                 };
                 speed::fold(p, view, settling);
                 report

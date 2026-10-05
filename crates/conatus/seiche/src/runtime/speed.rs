@@ -295,6 +295,8 @@ pub(super) struct Stepped {
     pub(super) steps: u32,
     pub(super) budget_bound: bool,
     pub(super) compute: Option<Duration>,
+    pub(super) admitted: u32,
+    pub(super) admitted_until: Option<Duration>,
 }
 
 /// Run up to `cap` of the ticks owed, under the budget above real time, and
@@ -330,8 +332,10 @@ pub(super) fn step_owed(
         && out.steps < cap
         && should_tick(sim, *ticks_remaining, dragging, halted)
     {
+        // Past the floor, a tick runs only if the gate admits it.
+        let gated = budget.is_some() && out.steps >= floor.max(1);
         if let (Some(budget), Some(start)) = (budget, start)
-            && out.steps >= floor.max(1)
+            && gated
             && (budget.clock)().saturating_sub(start) + pace.forecast + budget.margin
                 > budget.per_frame
         {
@@ -343,9 +347,14 @@ pub(super) fn step_owed(
         }
         let before = budget.map(|budget| (budget.clock)());
         sim.tick(TICK_DT);
-        if let (Some(budget), Some(before)) = (budget, before) {
-            let cost = (budget.clock)().saturating_sub(before);
+        if let (Some(budget), Some(before), Some(start)) = (budget, before, start) {
+            let after = (budget.clock)();
+            let cost = after.saturating_sub(before);
             pace.forecast = cost.max(pace.forecast - pace.forecast / 8);
+            if gated {
+                out.admitted += 1;
+                out.admitted_until = Some(after.saturating_sub(start));
+            }
         }
         *ticks_remaining = ticks_remaining.saturating_sub(1);
         pace.ticks += 1;
