@@ -131,6 +131,34 @@ impl Force for Kuramoto {
 /// synchrony, so the communities are a transient; the draw is a spring to a
 /// target that moves with the phase.
 impl Declared for Kuramoto {
+    /// The ring draw at the unit length; F5 names no reference for the
+    /// phase coupling.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        (term == 1).then(|| crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.stiffness),
+        })
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        (term == 1).then(|| {
+            let phases = self
+                .phases
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
+            Box::new(Self {
+                phases: Mutex::new(phases),
+                radius_of: self.radius_of.clone(),
+                natural_frequency: self.natural_frequency,
+                coupling: self.coupling,
+                default_radius: self.default_radius,
+                centre: self.centre,
+                stiffness: crate::scale::strength_at_offset(weight),
+            }) as Box<dyn Force>
+        })
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

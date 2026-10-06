@@ -247,6 +247,19 @@ impl Force for Boundary {
 }
 
 impl Declared for NodeExclusion {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Contact,
+            weight: crate::scale::at_contact(self.strength, -2.0),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.strength = crate::scale::strength_at_contact(weight, -2.0);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "exclusion",
@@ -257,6 +270,11 @@ impl Declared for NodeExclusion {
             Class::E,
             Observable::Overlaps,
         )]
+    }
+
+    /// The lagged upload ([`crate::LaggedRepulsion`]) carries this law.
+    fn resident(&self, _term: usize) -> bool {
+        true
     }
 
     /// `s/d`, floored, less its value at the cutoff, so it is zero beyond.
@@ -280,6 +298,21 @@ impl Declared for NodeExclusion {
 }
 
 impl Declared for EdgeSpring {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Stretch {
+                rest: self.rest_length,
+            },
+            weight: crate::scale::at_stretch(self.stiffness, self.rest_length),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.stiffness = crate::scale::stiffness_at_stretch(weight, self.rest_length);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "edge spring",
@@ -303,6 +336,19 @@ impl Declared for EdgeSpring {
 }
 
 impl Declared for Boundary {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.strength),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.strength = crate::scale::strength_at_offset(weight);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "centring",

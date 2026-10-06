@@ -112,6 +112,21 @@ impl Force for StressSpring {
 }
 
 impl Declared for StressSpring {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Stretch {
+                rest: self.unit_length,
+            },
+            weight: crate::scale::at_stretch(self.stiffness, self.unit_length),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.stiffness = crate::scale::stiffness_at_stretch(weight, self.unit_length);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "stress",

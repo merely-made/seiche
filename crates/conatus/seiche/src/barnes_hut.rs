@@ -139,6 +139,19 @@ impl Force for BarnesHutRepulsion {
 /// quadtree at `θ` is its Barnes–Hut rung, so its forces match this energy's
 /// gradient only to the rung's tolerance.
 impl Declared for BarnesHutRepulsion {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Contact,
+            weight: crate::scale::at_contact(self.strength, -1.0),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.strength = crate::scale::strength_at_contact(weight, -1.0);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "charge",

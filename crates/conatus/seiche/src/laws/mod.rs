@@ -89,6 +89,21 @@ pub(crate) fn node_positions(ctx: &ForceContext<'_>) -> Vec<(NodeKey, RigidBodyH
     nodes
 }
 
+/// A kinematic law's conversion of the other terms' forces (dynamics grammar
+/// plan, G3): every moving body starts the step at rest, so rapier
+/// integrates the accumulated force for one step from rest, `v = F/γ`, the
+/// rule Hold follows. Pinned (kinematic) bodies are the drag's and are left.
+pub(crate) fn convert_forces(ctx: &mut ForceContext<'_>) {
+    for &handle in ctx.bodies_by_node.values() {
+        if let Some(body) = ctx.bodies.get_mut(handle)
+            && body.is_dynamic()
+        {
+            body.set_linvel(Vector::ZERO, false);
+            body.set_angvel(0.0, false);
+        }
+    }
+}
+
 /// The degree of every node in the synced edge list (self-edges ignored).
 pub(crate) fn degrees(edges: &[(NodeKey, NodeKey)]) -> std::collections::HashMap<NodeKey, u32> {
     let mut degree = std::collections::HashMap::new();

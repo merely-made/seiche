@@ -137,6 +137,37 @@ impl Force for Boids {
 /// mates is a gradient in the metric of mate counts (Em); alignment and the
 /// cruise read velocity (N).
 impl Declared for Boids {
+    /// Separation at contact, its taper `1 − d/R` included, and the
+    /// centring at the unit length; F5 names no reference for steering or
+    /// the cruise.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        let taper = f64::from(1.0 - crate::scale::CONTACT / self.separation_radius).max(0.0);
+        match term {
+            0 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Contact,
+                weight: crate::scale::at_contact(self.separation, -1.0) * taper,
+            }),
+            4 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Offset,
+                weight: crate::scale::at_offset(self.gravity),
+            }),
+            _ => None,
+        }
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let taper = f64::from(1.0 - crate::scale::CONTACT / self.separation_radius).max(0.0);
+        let mut force = *self;
+        match term {
+            0 if taper > 0.0 => {
+                force.separation = crate::scale::strength_at_contact(weight / taper, -1.0)
+            },
+            4 => force.gravity = crate::scale::strength_at_offset(weight),
+            _ => return None,
+        }
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

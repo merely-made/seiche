@@ -118,6 +118,8 @@ impl Anneal {
 
 impl Force for Anneal {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
+        // A kinematic law: other terms' forces enter converted (G3).
+        super::convert_forces(ctx);
         let mut state = self
             .state
             .lock()

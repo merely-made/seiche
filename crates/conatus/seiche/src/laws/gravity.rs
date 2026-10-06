@@ -234,7 +234,8 @@ impl Declared for Gravity {
                 Class::K,
                 Observable::Energy,
             )
-            .moving(State::Velocity, Currency::Kinematic),
+            .moving(State::Velocity, Currency::Kinematic)
+            .once(),
         ]
     }
 

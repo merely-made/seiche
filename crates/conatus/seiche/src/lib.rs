@@ -82,6 +82,17 @@ pub use terms::{
     Class, Currency, Declared, Kernel, Layout, Metric, Observable, State, Term, Topology,
 };
 
+/// The combinators (dynamics grammar plan, G3): composition by currency, the
+/// weighted sum, groups, and the observables their receipts read.
+pub mod compose;
+pub mod grouped;
+pub mod observe;
+pub mod scale;
+pub mod weighted;
+pub use compose::Admission;
+pub use grouped::{Grouped, Partition, Spread};
+pub use weighted::Weighted;
+
 /// Built-in force forces for the force-directed orrery layout.
 pub mod forces;
 pub use forces::{Boundary, EdgeSpring, NodeExclusion};

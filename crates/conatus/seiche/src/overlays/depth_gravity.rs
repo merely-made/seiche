@@ -69,6 +69,19 @@ impl Force for DepthGravity {
 }
 
 impl Declared for DepthGravity {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.strength),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.strength = crate::scale::strength_at_offset(weight);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "depth",
