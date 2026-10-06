@@ -39,7 +39,7 @@ fn const_field_matches_analytic() {
     let (xs, ys) = make_xs_ys(&[(0.0, 0.0), (1.0, 2.0), (3.0, 4.0)]);
     let f = ScalarField::Const(2.5);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[2.5, 2.5, 2.5], 1.0e-6));
 }
 
@@ -48,7 +48,7 @@ fn coord_x_matches_input() {
     let reg = FieldRegistry::new();
     let (xs, ys) = make_xs_ys(&[(1.0, 10.0), (2.0, 20.0), (3.0, 30.0)]);
     let result = lower_scalar(&ScalarField::CoordX, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[1.0, 2.0, 3.0], 1.0e-6));
 }
 
@@ -57,7 +57,7 @@ fn coord_y_matches_input() {
     let reg = FieldRegistry::new();
     let (xs, ys) = make_xs_ys(&[(1.0, 10.0), (2.0, 20.0)]);
     let result = lower_scalar(&ScalarField::CoordY, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[10.0, 20.0], 1.0e-6));
 }
 
@@ -66,7 +66,7 @@ fn time_field_broadcasts() {
     let reg = FieldRegistry::new();
     let (xs, ys) = make_xs_ys(&[(0.0, 0.0), (1.0, 1.0)]);
     let result = lower_scalar(&ScalarField::Time, &reg, xs, ys, 1.5).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[1.5, 1.5], 1.0e-6));
 }
 
@@ -77,7 +77,7 @@ fn add_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::Add(Box::new(ScalarField::CoordX), Box::new(ScalarField::CoordY));
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -92,7 +92,7 @@ fn gaussian_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::gaussian_at(0.0, 0.0, 10.0);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -112,7 +112,7 @@ fn linear_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::linear(2.0, -3.0, 1.0);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -126,7 +126,7 @@ fn negate_flips_sign() {
     let (xs, ys) = make_xs_ys(&[(2.0, 0.0), (-3.0, 0.0)]);
     let f = ScalarField::Negate(Box::new(ScalarField::CoordX));
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[-2.0, 3.0], 1.0e-6));
 }
 
@@ -136,7 +136,7 @@ fn scale_matches_analytic() {
     let (xs, ys) = make_xs_ys(&[(1.0, 0.0), (2.0, 0.0)]);
     let f = ScalarField::Scale(Box::new(ScalarField::CoordX), 5.0);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[5.0, 10.0], 1.0e-6));
 }
 
@@ -146,8 +146,8 @@ fn vector_const_matches_analytic() {
     let (xs, ys) = make_xs_ys(&[(0.0, 0.0), (1.0, 1.0)]);
     let f = VectorField::ConstVec { x: 3.0, y: 5.0 };
     let (rx, ry) = lower_vector(&f, &reg, xs, ys, 0.0).unwrap();
-    let ax = rx.into_data().to_vec::<f32>().unwrap();
-    let ay = ry.into_data().to_vec::<f32>().unwrap();
+    let ax = rx.into_data().try_to_vec::<f32>().unwrap();
+    let ay = ry.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&ax, &[3.0, 3.0], 1.0e-6));
     assert!(approx_slice(&ay, &[5.0, 5.0], 1.0e-6));
 }
@@ -159,12 +159,12 @@ fn vector_perp_rotates_90() {
     let f = VectorField::Perp(Box::new(VectorField::ConstVec { x: 1.0, y: 0.0 }));
     let (rx, ry) = lower_vector(&f, &reg, xs, ys, 0.0).unwrap();
     assert!(approx_slice(
-        &rx.into_data().to_vec::<f32>().unwrap(),
+        &rx.into_data().try_to_vec::<f32>().unwrap(),
         &[0.0],
         1.0e-6
     ));
     assert!(approx_slice(
-        &ry.into_data().to_vec::<f32>().unwrap(),
+        &ry.into_data().try_to_vec::<f32>().unwrap(),
         &[1.0],
         1.0e-6
     ));
@@ -178,8 +178,8 @@ fn gradient_of_gaussian_matches_analytic() {
     let f = ScalarField::gaussian_at(0.0, 0.0, 10.0);
     let g = VectorField::Gradient(Box::new(f.clone()));
     let (rx, ry) = lower_vector(&g, &reg, xs, ys, 0.0).unwrap();
-    let ax = rx.into_data().to_vec::<f32>().unwrap();
-    let ay = ry.into_data().to_vec::<f32>().unwrap();
+    let ax = rx.into_data().try_to_vec::<f32>().unwrap();
+    let ay = ry.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<(f32, f32)> = pts
         .iter()
         .map(|(x, y)| eval::grad_scalar(&f, &reg, *x, *y, 0.0))
@@ -207,8 +207,8 @@ fn gradient_of_linear_returns_normal() {
     let f = ScalarField::linear(2.0, -3.0, 1.0);
     let g = VectorField::Gradient(Box::new(f));
     let (rx, ry) = lower_vector(&g, &reg, xs, ys, 0.0).unwrap();
-    let ax = rx.into_data().to_vec::<f32>().unwrap();
-    let ay = ry.into_data().to_vec::<f32>().unwrap();
+    let ax = rx.into_data().try_to_vec::<f32>().unwrap();
+    let ay = ry.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&ax, &[2.0, 2.0], 1.0e-6));
     assert!(approx_slice(&ay, &[-3.0, -3.0], 1.0e-6));
 }
@@ -219,7 +219,7 @@ fn sample_resolves_through_registry() {
     let id = reg.insert_scalar("base", ScalarField::Const(7.0));
     let (xs, ys) = make_xs_ys(&[(0.0, 0.0), (1.0, 1.0)]);
     let result = lower_scalar(&ScalarField::Sample(id), &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&actual, &[7.0, 7.0], 1.0e-6));
 }
 
@@ -239,7 +239,7 @@ fn disk_hard_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::disk_at(0.0, 0.0, 10.0, Falloff::Hard);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -259,7 +259,7 @@ fn disk_linear_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::disk_at(0.0, 0.0, 10.0, Falloff::Linear);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -274,7 +274,7 @@ fn disk_smoothstep_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::disk_at(0.0, 0.0, 10.0, Falloff::Smoothstep);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -294,7 +294,7 @@ fn disk_quadratic_matches_analytic() {
     let (xs, ys) = make_xs_ys(&pts);
     let f = ScalarField::disk_at(0.0, 0.0, 10.0, Falloff::Quadratic);
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected: Vec<f32> = pts
         .iter()
         .map(|(x, y)| eval::eval_scalar(&f, &reg, *x, *y, 0.0))
@@ -313,7 +313,7 @@ fn dot_matches_analytic() {
         Box::new(VectorField::ConstVec { x: 1.0, y: 2.0 }),
     );
     let result = lower_scalar(&f, &reg, xs, ys, 0.0).unwrap();
-    let actual = result.into_data().to_vec::<f32>().unwrap();
+    let actual = result.into_data().try_to_vec::<f32>().unwrap();
     let expected = vec![0.0, 1.0, 11.0];
     assert!(approx_slice(&actual, &expected, 1.0e-5));
 }
@@ -328,8 +328,8 @@ fn vector_scale_by_scalar_field() {
         Box::new(ScalarField::CoordX),
     );
     let (rx, ry) = lower_vector(&f, &reg, xs, ys, 0.0).unwrap();
-    let ax = rx.into_data().to_vec::<f32>().unwrap();
-    let ay = ry.into_data().to_vec::<f32>().unwrap();
+    let ax = rx.into_data().try_to_vec::<f32>().unwrap();
+    let ay = ry.into_data().try_to_vec::<f32>().unwrap();
     assert!(approx_slice(&ax, &[2.0, 4.0], 1.0e-6));
     assert!(approx_slice(&ay, &[0.0, 0.0], 1.0e-6));
 }
@@ -343,8 +343,8 @@ fn gradient_of_mul_uses_product_rule() {
     let pts = [(0.0, 0.0), (3.0, 5.0), (-2.0, 7.0)];
     let (xs, ys) = make_xs_ys(&pts);
     let (rx, ry) = lower_vector(&g, &reg, xs, ys, 0.0).unwrap();
-    let ax = rx.into_data().to_vec::<f32>().unwrap();
-    let ay = ry.into_data().to_vec::<f32>().unwrap();
+    let ax = rx.into_data().try_to_vec::<f32>().unwrap();
+    let ay = ry.into_data().try_to_vec::<f32>().unwrap();
     // Expected: (y, x)
     assert!(approx_slice(&ax, &[0.0, 5.0, 7.0], 1.0e-5));
     assert!(approx_slice(&ay, &[0.0, 3.0, -2.0], 1.0e-5));

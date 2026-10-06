@@ -183,8 +183,8 @@ pub fn repulsion_wgpu_roundtrip(
         params,
     );
     Ok((
-        fx.into_data().to_vec::<f32>().expect("fx readback"),
-        fy.into_data().to_vec::<f32>().expect("fy readback"),
+        fx.into_data().try_to_vec::<f32>().expect("fx readback"),
+        fy.into_data().try_to_vec::<f32>().expect("fy readback"),
     ))
 }
 
@@ -213,8 +213,8 @@ pub fn node_exclusion_wgpu_roundtrip(
         params,
     );
     Ok((
-        fx.into_data().to_vec::<f32>().expect("fx readback"),
-        fy.into_data().to_vec::<f32>().expect("fy readback"),
+        fx.into_data().try_to_vec::<f32>().expect("fx readback"),
+        fy.into_data().try_to_vec::<f32>().expect("fy readback"),
     ))
 }
 
@@ -297,8 +297,8 @@ mod tests {
             p,
         );
         (
-            fx.into_data().to_vec::<f32>().unwrap(),
-            fy.into_data().to_vec::<f32>().unwrap(),
+            fx.into_data().try_to_vec::<f32>().unwrap(),
+            fy.into_data().try_to_vec::<f32>().unwrap(),
         )
     }
 
@@ -310,8 +310,8 @@ mod tests {
             p,
         );
         (
-            fx.into_data().to_vec::<f32>().unwrap(),
-            fy.into_data().to_vec::<f32>().unwrap(),
+            fx.into_data().try_to_vec::<f32>().unwrap(),
+            fy.into_data().try_to_vec::<f32>().unwrap(),
         )
     }
 
@@ -406,8 +406,8 @@ mod tests_wgpu {
             RepulsionParams::default(),
         );
         (
-            fx.into_data().to_vec::<f32>().unwrap(),
-            fy.into_data().to_vec::<f32>().unwrap(),
+            fx.into_data().try_to_vec::<f32>().unwrap(),
+            fy.into_data().try_to_vec::<f32>().unwrap(),
         )
     }
 
@@ -424,8 +424,8 @@ mod tests_wgpu {
             params,
         );
         (
-            fx.into_data().to_vec::<f32>().unwrap(),
-            fy.into_data().to_vec::<f32>().unwrap(),
+            fx.into_data().try_to_vec::<f32>().unwrap(),
+            fy.into_data().try_to_vec::<f32>().unwrap(),
         )
     }
 

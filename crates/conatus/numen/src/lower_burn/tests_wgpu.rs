@@ -78,7 +78,7 @@ fn run_scalar(f: &ScalarField, pts: &[(f32, f32)], dev: &Device) -> Vec<f32> {
     lower_scalar(f, &reg, xs, ys, 0.0)
         .unwrap()
         .into_data()
-        .to_vec::<f32>()
+        .try_to_vec::<f32>()
         .unwrap()
 }
 
@@ -87,8 +87,8 @@ fn run_vector(f: &VectorField, pts: &[(f32, f32)], dev: &Device) -> (Vec<f32>, V
     let (xs, ys) = tensors(pts, dev);
     let (rx, ry) = lower_vector(f, &reg, xs, ys, 0.0).unwrap();
     (
-        rx.into_data().to_vec::<f32>().unwrap(),
-        ry.into_data().to_vec::<f32>().unwrap(),
+        rx.into_data().try_to_vec::<f32>().unwrap(),
+        ry.into_data().try_to_vec::<f32>().unwrap(),
     )
 }
 
