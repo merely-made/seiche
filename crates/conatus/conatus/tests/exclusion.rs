@@ -177,7 +177,9 @@ fn the_binning_scan_is_exact_across_its_levels() {
     // One block, a block edge either side, two levels, and three levels
     // (256 * 256 = 65,536 is where a third level appears).
     for len in [1usize, 255, 256, 257, 4_097, 70_001] {
-        let data: Vec<u32> = (0..len as u32).map(|i| (i * 2_654_435_761) % 7).collect();
+        let data: Vec<u32> = (0..len as u32)
+            .map(|i| i.wrapping_mul(2_654_435_761) % 7)
+            .collect();
         let handle = compute.create_from_slice(bytemuck::cast_slice(&data));
         binning::exclusive_scan(compute, &handle, len);
         let bytes = compute.read_one(handle).expect("scan readback");
