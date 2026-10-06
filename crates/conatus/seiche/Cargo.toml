@@ -31,8 +31,8 @@ tracing = "0.1"
 # that only wants the integrator — a wasm build, a batch layout job — takes the
 # inline backend and no threading runtime at all.
 armillary = { path = "../../armillary", version = "0.1.1", optional = true }
-burn = { version = "0.22.0-pre.2", default-features = false, features = ["std"], optional = true }
-burn-wgpu = { version = "0.22.0-pre.2", default-features = false, features = ["std", "autotune"], optional = true }
+burn = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
+burn-wgpu = { version = "=0.22.0", default-features = false, features = ["std", "autotune"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }

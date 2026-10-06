@@ -17,8 +17,8 @@ strum = { version = "0.28", features = ["derive"] }
 # Optional authoring and tensor-lowering backends. The default path remains
 # serde/UUID data plus the analytic evaluator; neither Burn nor Rhai reaches a
 # portable consumer unless it selects the corresponding feature.
-burn = { version = "0.22.0-pre.2", default-features = false, features = ["std"], optional = true }
-burn-wgpu = { version = "0.22.0-pre.2", default-features = false, features = ["std", "autotune"], optional = true }
+burn = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
+burn-wgpu = { version = "=0.22.0", default-features = false, features = ["std", "autotune"], optional = true }
 rhai = { version = "1.20", default-features = false, features = ["std"], optional = true }
 
 # v4 (random) is native-only; WASM hosts mint ids via `from_uuid` with a
