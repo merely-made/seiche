@@ -20,7 +20,7 @@ math is literally modular arithmetic), it is the shared sparse-brick
 presentation ABI, which Mesocosm and Paredros already consume by pinned rev.
 
 The resident lane is the explicit-regime half of the spatial compute
-plan (`design_docs/mere_docs/technical_architecture/2026-08-13_spatial_compute_plan.md`):
+plan (`design_docs/archive_docs/2026-10-06_completed_plans/2026-08-13_spatial_compute_plan.md`):
 positions and velocities live in GPU buffers as padded 3D `vec4f`, three
 dispatches advance them, and the only per-frame readback is a four-byte
 settle word. It sits beside the Burn lane rather than replacing it. Burn
