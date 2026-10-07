@@ -48,8 +48,8 @@ fn fixture(sizes: &[usize]) -> Fixture {
     (keys, edges, groups)
 }
 
-/// Charge between groups (its three terms over the groups' graph), Springs
-/// within each.
+/// Charge's repulsion between groups at weight 16 (F71), Springs within
+/// each.
 fn charge_between_springs_within(
     groups: &[(NodeKey, u32)],
     edges: &[(NodeKey, NodeKey)],
@@ -57,18 +57,17 @@ fn charge_between_springs_within(
     spread: Spread,
 ) -> Grouped {
     let partition = Partition::new(groups.iter().copied(), edges);
-    let outer: Vec<Box<dyn Force>> = vec![
-        Box::new(BarnesHutRepulsion {
-            strength: 6_000.0,
-            config: BarnesHutConfig {
-                theta,
-                ..BarnesHutConfig::default()
-            },
-            ..BarnesHutRepulsion::default()
-        }),
-        Box::new(EdgeSpring::default()),
-        Box::new(Boundary::default()),
-    ];
+    let charge = BarnesHutRepulsion {
+        strength: 6_000.0,
+        config: BarnesHutConfig {
+            theta,
+            ..BarnesHutConfig::default()
+        },
+        ..BarnesHutRepulsion::default()
+    };
+    let outer: Vec<Box<dyn Force>> = vec![Box::new(
+        crate::Weighted::new(Box::new(charge), 16.0).unwrap(),
+    )];
     let inner = (0..partition.len())
         .map(|_| {
             vec![
@@ -129,13 +128,8 @@ fn weight_share_passes_descent_and_reciprocity_and_full_force_fails_on_unequal_g
         ))
     };
     let terms = exact().terms();
-    assert_eq!(terms.len(), 6);
-    assert!(terms[..2].iter().all(|t| t.topology == Topology::Groups));
-    assert_eq!(
-        terms[2].topology,
-        Topology::Unary,
-        "the outer centring pulls each group alone"
-    );
+    assert_eq!(terms.len(), 4);
+    assert_eq!(terms[0].topology, Topology::Groups);
     for term in 0..terms.len() {
         let reading = read(&mut probe, &exact, term, &starts);
         println!(
