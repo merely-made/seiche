@@ -147,7 +147,7 @@ impl Declared for BarnesHutRepulsion {
     }
 
     fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
-        let mut force = self.clone();
+        let mut force = *self;
         force.strength = crate::scale::strength_at_contact(weight, -1.0);
         Some(Box::new(force))
     }

@@ -14,9 +14,12 @@ use crate::instruments::{Probe, Vector, balance, read};
 use crate::laws::Rng;
 use crate::{BarnesHutConfig, BarnesHutRepulsion, Boundary, EdgeSpring, NodeExclusion};
 
+/// A fixture's keys, edges and groups.
+type Fixture = (Vec<NodeKey>, Vec<(NodeKey, NodeKey)>, Vec<(NodeKey, u32)>);
+
 /// Forty nodes in five groups of 3, 5, 8, 10 and 14, joined by a seeded
 /// tree and twenty chords, so edges run within and across groups.
-fn fixture(sizes: &[usize]) -> (Vec<NodeKey>, Vec<(NodeKey, NodeKey)>, Vec<(NodeKey, u32)>) {
+fn fixture(sizes: &[usize]) -> Fixture {
     let n: usize = sizes.iter().sum();
     let keys: Vec<NodeKey> = (0..n).map(NodeKey::new).collect();
     let mut rng = Rng::new(7);

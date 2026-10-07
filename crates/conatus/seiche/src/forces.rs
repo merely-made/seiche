@@ -255,7 +255,7 @@ impl Declared for NodeExclusion {
     }
 
     fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
-        let mut force = self.clone();
+        let mut force = *self;
         force.strength = crate::scale::strength_at_contact(weight, -2.0);
         Some(Box::new(force))
     }
@@ -308,7 +308,7 @@ impl Declared for EdgeSpring {
     }
 
     fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
-        let mut force = self.clone();
+        let mut force = *self;
         force.stiffness = crate::scale::stiffness_at_stretch(weight, self.rest_length);
         Some(Box::new(force))
     }
@@ -344,7 +344,7 @@ impl Declared for Boundary {
     }
 
     fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
-        let mut force = self.clone();
+        let mut force = *self;
         force.strength = crate::scale::strength_at_offset(weight);
         Some(Box::new(force))
     }
