@@ -107,6 +107,20 @@ impl HubGravity {
 /// `s·wᵢwⱼ·ln d` in the metric of the weights (class Em; the brief's finding
 /// F-c, declared as it is, F8).
 impl Declared for HubGravity {
+    /// The pull at contact toward a body of unit weight (F80).
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Contact,
+            weight: crate::scale::at_contact(self.strength, -1.0),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.strength = crate::scale::strength_at_contact(weight, -1.0);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

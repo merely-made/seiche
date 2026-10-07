@@ -147,6 +147,10 @@ impl Declared for Boids {
                 reference: crate::scale::Reference::Contact,
                 weight: crate::scale::at_contact(self.separation, -1.0) * taper,
             }),
+            2 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Contact,
+                weight: crate::scale::at_contact(self.cohesion, 1.0),
+            }),
             4 => Some(crate::scale::Scale {
                 reference: crate::scale::Reference::Offset,
                 weight: crate::scale::at_offset(self.gravity),
@@ -162,6 +166,7 @@ impl Declared for Boids {
             0 if taper > 0.0 => {
                 force.separation = crate::scale::strength_at_contact(weight / taper, -1.0)
             },
+            2 => force.cohesion = crate::scale::strength_at_contact(weight, 1.0),
             4 => force.gravity = crate::scale::strength_at_offset(weight),
             _ => return None,
         }

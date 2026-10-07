@@ -12,18 +12,25 @@
 //! - A repulsion's reference is two bodies at contact, a node diameter
 //!   ([`CONTACT`], 36), as Charge's calibration matched `NodeExclusion`.
 //! - A spring's is a pair one rest length past its rest length.
-//! - A unary pull's is one body [`UNIT_LENGTH`] from its target.
+//! - A unary pull's is one body [`UNIT_LENGTH`] from its target (F79:
+//!   "170, Grid at half cell"), except Grid's, whose cell of 120 cannot hold
+//!   that offset: it is read half a cell from its grid point.
+//! - Where distance matters (F80): the attractions (LinLog's, Hub pull),
+//!   gravitation (Plummer, read on a standard node body at unit
+//!   gravitational mass) and Boids' cohesion, which pulls in proportion to
+//!   its offset from the mates' centre, are read at contact too.
 //!
 //! A term reports its [`Scale`] through [`Declared::scale`](crate::Declared)
 //! and is rebuilt at another weight through `reweighted`. Today's
 //! calibrated strengths are their weights, so the default compositions are
-//! unchanged. F5 names no reference for attractions, gravitation or the
-//! dynamics kernels (tent, steering, drive, needle, phase coupling); those
-//! terms report none.
+//! unchanged. Alignment, phase coupling, the needle, the two drives, the
+//! writes and Density's diffusion depend on no distance and report none,
+//! weight 1 meaning as calibrated. Particle life's tent reports none while
+//! its reading at contact, which lands in its repulsive core, is before Mark.
 //!
 //! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G3.
 
-use crate::{Kernel, NODE_BODY_RADIUS, Term, Topology};
+use crate::{Kernel, NODE_BODY_DENSITY, NODE_BODY_RADIUS, Observable, Term, Topology};
 
 /// Two bodies touching: a node diameter.
 pub const CONTACT: f32 = 2.0 * NODE_BODY_RADIUS;
@@ -42,18 +49,25 @@ pub enum Reference {
     Stretch { rest: f32 },
     /// One body [`UNIT_LENGTH`] from its target.
     Offset,
+    /// One body half a `cell` from its nearest grid point (F79).
+    HalfCell { cell: f32 },
 }
 
-/// Which reference F5 gives a declaration: a unary or group pull at an
-/// offset, a pair repulsion at contact, a pair spring at a stretch. `None`
-/// for the kernels F5 does not name.
+/// Which reference a declaration takes: a unary or group pull at an offset,
+/// a pair repulsion, attraction or gravitation at contact, a pair spring at
+/// a stretch, and a steering toward the mates' centre (it moves pair
+/// lengths) at contact (F5, F80). `None` for kernels that depend on no
+/// distance, and for the tent while its reference is open.
 pub fn family(term: &Term) -> Option<Family> {
     match (term.topology, term.kernel) {
         (Topology::Unary | Topology::Groups, Kernel::Harmonic | Kernel::Spring) => {
             Some(Family::Offset)
         },
         (Topology::Unary | Topology::Medium, _) => None,
-        (_, Kernel::Repulsion { .. }) => Some(Family::Contact),
+        (_, Kernel::Repulsion { .. } | Kernel::Attraction { .. } | Kernel::Plummer) => {
+            Some(Family::Contact)
+        },
+        (_, Kernel::Steering) if term.observable == Observable::PairLength => Some(Family::Contact),
         (_, Kernel::Spring) => Some(Family::Stretch),
         _ => None,
     }
@@ -72,7 +86,7 @@ impl Reference {
         match self {
             Reference::Contact => Family::Contact,
             Reference::Stretch { .. } => Family::Stretch,
-            Reference::Offset => Family::Offset,
+            Reference::Offset | Reference::HalfCell { .. } => Family::Offset,
         }
     }
 }
@@ -103,6 +117,16 @@ pub fn at_offset(strength: f32) -> f64 {
 /// The strength whose pull at the unit length is `weight`.
 pub fn strength_at_offset(weight: f64) -> f32 {
     (weight / f64::from(UNIT_LENGTH)) as f32
+}
+
+/// Plummer gravitation's pull per unit `G` at contact, softened by
+/// `softening`, on a standard node body (density times disc area) at unit
+/// gravitational mass: the law applies acceleration times inertial mass.
+pub fn plummer_at_contact(softening: f32) -> f64 {
+    let (c, e) = (f64::from(CONTACT), f64::from(softening));
+    let r = f64::from(NODE_BODY_RADIUS);
+    let body = f64::from(NODE_BODY_DENSITY) * std::f64::consts::PI * r * r;
+    c / (c * c + e * e).powf(1.5) * body
 }
 
 /// A spring's `k · rest` at one rest length of stretch.

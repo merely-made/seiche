@@ -13,9 +13,10 @@
 use super::*;
 use crate::instruments::{Probe, Vector, isolated};
 use crate::{
-    AffinitySpring, AnchorSpring, BarnesHutRepulsion, Boids, Boundary, Declared, DegreeRepulsion,
-    DepthGravity, DomainCluster, EdgeSpring, Force, ForceContext, GravityLocus, Kuramoto,
-    LinLogForce, MagneticSpring, NodeExclusion, NodeKey, ParticleLife, StressSpring, Term,
+    AffinitySpring, AnchorSpring, BarnesHutRepulsion, Boids, Boundary, CounterDamping, Declared,
+    DegreeRepulsion, DepthGravity, DomainCluster, EdgeSpring, Force, ForceContext, Gravity,
+    GravityLocus, GridSnap, HubGravity, Kuramoto, LinLogForce, MagneticSpring, NodeExclusion,
+    NodeKey, ParticleLife, StressSpring, Term, Topology,
 };
 
 const TOLERANCE: f64 = 1e-3;
@@ -146,6 +147,35 @@ fn cases() -> Vec<Case> {
             term: 1,
             make: Box::new(|| Box::new(Kuramoto::new([(a(), 200.0), (b(), 200.0)]))),
         },
+        // F79: Grid at its half cell.
+        Case {
+            name: "grid",
+            term: 0,
+            make: Box::new(|| Box::new(GridSnap::default())),
+        },
+        // F80: where distance matters, at contact.
+        Case {
+            name: "linlog attraction",
+            term: 1,
+            make: Box::new(|| Box::new(LinLogForce::default())),
+        },
+        Case {
+            name: "hub pull",
+            term: 0,
+            make: Box::new(move || {
+                Box::new(HubGravity::default().with_weights([unit(a()), unit(b())]))
+            }),
+        },
+        Case {
+            name: "gravitation",
+            term: 0,
+            make: Box::new(|| Box::new(Gravity::new([], CounterDamping::Off))),
+        },
+        Case {
+            name: "boids cohesion",
+            term: 2,
+            make: Box::new(|| Box::new(Boids::default())),
+        },
     ]
 }
 
@@ -158,9 +188,11 @@ fn measured(force: &dyn Force, term: &Term, reference: Reference, name: &str) ->
     let place = |probe: &mut Probe, at_b: Vector, at_a: Vector| {
         probe.place(&[at_a, at_b]);
     };
-    let mut probe = match reference {
-        Reference::Stretch { .. } => Probe::new(&keys, &edges),
-        _ => Probe::new(&keys, &[]),
+    let joined = matches!(reference, Reference::Stretch { .. }) || term.topology == Topology::Edges;
+    let mut probe = if joined {
+        Probe::new(&keys, &edges)
+    } else {
+        Probe::new(&keys, &[])
     };
     let l = UNIT_LENGTH;
     match reference {
@@ -168,6 +200,12 @@ fn measured(force: &dyn Force, term: &Term, reference: Reference, name: &str) ->
         Reference::Stretch { rest } => {
             place(&mut probe, Vector::new(2.0 * rest, 0.0), Vector::ZERO)
         },
+        // Half a cell from the grid point at the origin, on the x axis.
+        Reference::HalfCell { cell } => place(
+            &mut probe,
+            Vector::new(cell / 2.0, 0.0),
+            Vector::new(-cell / 2.0, 0.0),
+        ),
         Reference::Offset => match name {
             "group pull" => place(&mut probe, Vector::new(l, 0.0), Vector::new(-l, 0.0)),
             // Depth pulls along its direction, toward depth 0 at the origin.
@@ -185,7 +223,6 @@ fn measured(force: &dyn Force, term: &Term, reference: Reference, name: &str) ->
             _ => place(&mut probe, Vector::new(l, 0.0), Vector::new(-l, 0.0)),
         },
     }
-    let _ = term;
     let f = probe.forces(force);
     f64::from(f[1].length())
 }
@@ -268,4 +305,43 @@ fn a_term_whose_declared_weight_is_wrong_fails_the_receipt() {
     );
     assert!((read - 1.0).abs() > 10.0 * TOLERANCE, "{read}");
     assert!((read - f64::from(CONTACT)).abs() < 1e-2, "{read}");
+}
+
+/// F80's probe for Boids' cohesion: it steers toward the mates' centre in
+/// proportion to the offset, so at contact and at twice contact it reads
+/// different pulls, and it belongs on the scale there.
+#[test]
+fn boids_cohesion_varies_with_offset_at_contact() {
+    let cohesion = isolated(Box::new(Boids::default()), 2);
+    let mut probe = Probe::new(&[a(), b()], &[(a(), b())]);
+    let mut read = |d: f32| {
+        probe.place(&[Vector::ZERO, Vector::new(d, 0.0)]);
+        f64::from(probe.forces(cohesion.as_ref())[1].length())
+    };
+    let (near, far) = (read(CONTACT), read(2.0 * CONTACT));
+    println!("boids cohesion: {near:.3} at contact, {far:.3} at twice contact");
+    assert!((far / near - 2.0).abs() < TOLERANCE, "{near} {far}");
+}
+
+/// The tent read at contact (F80, held): 36 is inside particle life's
+/// repulsive core (`core · radius`, 66 at the defaults), so the reading is
+/// the core's push, the same for every kind rule.
+#[test]
+fn the_tent_at_contact_reads_its_core_whatever_the_rule() {
+    let mut readings = Vec::new();
+    for rule in [-1.0f32, 0.0, 1.0] {
+        let law = ParticleLife::new([(a(), 0), (b(), 0)], 1, vec![rule]);
+        let core =
+            f64::from(law.strength) * (1.0 - f64::from(CONTACT) / f64::from(law.core * law.radius));
+        let tent = isolated(Box::new(law), 0);
+        let mut probe = Probe::new(&[a(), b()], &[]);
+        probe.place(&[Vector::ZERO, Vector::new(CONTACT, 0.0)]);
+        let read = f64::from(probe.forces(tent.as_ref())[1].length());
+        readings.push(format!("rule {rule}: {read:.3}"));
+        assert!(
+            (read - core).abs() < 1e-2,
+            "rule {rule}: {read} against {core}"
+        );
+    }
+    println!("tent at contact: {}", readings.join(", "));
 }

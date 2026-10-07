@@ -239,6 +239,33 @@ impl Declared for Gravity {
         ]
     }
 
+    /// Gravitation at contact between unit masses, on a standard node body
+    /// (F80); the drive and the kick depend on no distance.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        (term == 0).then(|| crate::scale::Scale {
+            reference: crate::scale::Reference::Contact,
+            weight: f64::from(self.strength) * crate::scale::plummer_at_contact(self.softening),
+        })
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        (term == 0).then(|| {
+            let kicked = *self
+                .kicked
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Box::new(Self {
+                masses: self.masses.clone(),
+                strength: (weight / crate::scale::plummer_at_contact(self.softening)) as f32,
+                softening: self.softening,
+                orbital_kick: self.orbital_kick,
+                counter_damping: self.counter_damping,
+                radial_floor: self.radial_floor,
+                kicked: Mutex::new(kicked),
+            }) as Box<dyn Force>
+        })
+    }
+
     fn isolate(&self, term: usize) -> Option<Box<dyn Force>> {
         let off = CounterDamping::Off;
         let (strength, counter_damping, orbital_kick) = match term {
