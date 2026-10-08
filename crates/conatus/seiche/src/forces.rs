@@ -82,11 +82,13 @@ impl Default for NodeExclusion {
 
 impl Force for NodeExclusion {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
-        // Snapshot every node's (handle, position) immutably before touching forces.
-        let nodes: Vec<(RigidBodyHandle, Vector)> = ctx
-            .bodies_by_node
-            .values()
-            .filter_map(|&handle| ctx.bodies.get(handle).map(|b| (handle, b.translation())))
+        // Snapshot every node's (handle, position) in key order before touching
+        // forces: each body's sum then runs in the same order in every run, so
+        // a seeded layout is bit-reproducible (ruled 2026-10-04, "Sum in key
+        // order"; HashMap order differed by up to ~35,000 ULP in 600 ticks).
+        let nodes: Vec<(RigidBodyHandle, Vector)> = crate::laws::node_positions(ctx)
+            .into_iter()
+            .map(|(_, handle, position)| (handle, position))
             .collect();
 
         // At or above the threshold, a host may stage this exact law through a
@@ -245,6 +247,19 @@ impl Force for Boundary {
 }
 
 impl Declared for NodeExclusion {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Contact,
+            weight: crate::scale::at_contact(self.strength, -2.0),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        force.strength = crate::scale::strength_at_contact(weight, -2.0);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "exclusion",
@@ -255,6 +270,11 @@ impl Declared for NodeExclusion {
             Class::E,
             Observable::Overlaps,
         )]
+    }
+
+    /// The lagged upload ([`crate::LaggedRepulsion`]) carries this law.
+    fn resident(&self, _term: usize) -> bool {
+        true
     }
 
     /// `s/d`, floored, less its value at the cutoff, so it is zero beyond.
@@ -278,6 +298,21 @@ impl Declared for NodeExclusion {
 }
 
 impl Declared for EdgeSpring {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Stretch {
+                rest: self.rest_length,
+            },
+            weight: crate::scale::at_stretch(self.stiffness, self.rest_length),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        force.stiffness = crate::scale::stiffness_at_stretch(weight, self.rest_length);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "edge spring",
@@ -301,6 +336,19 @@ impl Declared for EdgeSpring {
 }
 
 impl Declared for Boundary {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.strength),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        force.strength = crate::scale::strength_at_offset(weight);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "centring",

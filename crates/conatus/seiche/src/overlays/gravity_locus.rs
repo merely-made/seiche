@@ -89,6 +89,23 @@ impl Force for GravityLocus {
 /// A still locus is E; the tide's moving locus is a time-dependent
 /// potential (class H), which never rests.
 impl Declared for GravityLocus {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.strength),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let clock = *self.clock.lock().unwrap_or_else(|p| p.into_inner());
+        Some(Box::new(Self {
+            target: self.target,
+            strength: crate::scale::strength_at_offset(weight),
+            oscillation: self.oscillation,
+            clock: Mutex::new(clock),
+        }))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![match self.oscillation {
             None => Term::force(

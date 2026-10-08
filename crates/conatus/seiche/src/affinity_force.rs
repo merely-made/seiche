@@ -126,6 +126,21 @@ impl Force for AffinitySpring {
 /// A one-sided spring over the signal's pairs: E, its energy zero inside the
 /// rest length.
 impl Declared for AffinitySpring {
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Stretch {
+                rest: self.rest_length,
+            },
+            weight: crate::scale::at_stretch(self.stiffness, self.rest_length),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.stiffness = crate::scale::stiffness_at_stretch(weight, self.rest_length);
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "affinity",

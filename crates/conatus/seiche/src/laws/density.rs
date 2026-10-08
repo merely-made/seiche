@@ -180,6 +180,12 @@ pub struct Density {
     /// `seconds` then only sets the stop test's window. `None`, the default,
     /// is repeated passes.
     pub renew: Option<f32>,
+    /// Take other terms' forces converted, `v = F/γ`, as a kinematic law
+    /// does (dynamics grammar plan, G3): each tick the moving bodies start
+    /// at rest. Off by default while overlays on Density are refused
+    /// ("Refuse overlays on Density now"): on, a crowded start's contacts no
+    /// longer carry over from tick to tick, which changes Density alone.
+    pub converts: bool,
 }
 
 impl Density {
@@ -216,6 +222,7 @@ impl Density {
             max_passes: 1,
             min_passes: 0,
             renew: None,
+            converts: false,
         }
     }
 
@@ -333,6 +340,11 @@ impl PassMotion {
 
 impl Force for Density {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
+        // A kinematic law: other terms' forces enter converted, once Density
+        // takes any (G3).
+        if self.converts {
+            super::convert_forces(ctx);
+        }
         let nodes = node_positions(ctx);
         if nodes.is_empty() {
             return;

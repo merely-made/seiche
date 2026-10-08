@@ -30,12 +30,12 @@
 //! positions into it.
 
 #[cfg(feature = "actor")]
-use std::sync::mpsc::{Receiver, TryRecvError};
-#[cfg(feature = "actor")]
-use std::time::Duration;
+use std::sync::mpsc::Receiver;
 
+#[cfg(all(test, feature = "actor"))]
+use armillary::Emitter;
 #[cfg(feature = "actor")]
-use armillary::{ActorHandle, Emitter, Wake, spawn};
+use armillary::{ActorHandle, Wake, spawn};
 use euclid::default::Point2D;
 
 use crate::{
@@ -51,6 +51,16 @@ pub const TICK_DT: f32 = 1.0 / 60.0;
 
 mod elapsed;
 pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
+#[cfg(feature = "actor")]
+mod actor;
+mod speed;
+#[cfg(feature = "actor")]
+use actor::{ActorState, run};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use speed::monotonic_clock;
+pub use speed::{
+    DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
+};
 
 #[cfg(test)]
 mod pause_tests;
@@ -138,6 +148,11 @@ pub enum PhysicsCommand {
     AddEmitter(SceneEmitter),
     /// Remove every emitter + its bodies. (Physics scenes — emitters.)
     ClearEmitters,
+    /// Set the simulation speed (see [`Speed`]).
+    SetSpeed(Speed),
+    /// Bound the actor's compute per interval above real time; `None` is the
+    /// interval itself.
+    SetStepBudget(Option<std::time::Duration>),
 }
 
 /// One layout the actor produced: the positions plus whether it is still
@@ -146,6 +161,7 @@ pub struct PhysicsUpdate {
     pub snapshot: LayoutSnapshot,
     pub settling: bool,
     pub command_epoch: u64,
+    pub pace: PaceStats,
 }
 
 /// The in-thread backend: the simulation plus the settle/drag state the frame
@@ -156,7 +172,7 @@ pub struct InlinePhysics {
     dragging: bool,
     generation: u64,
     halted: bool,
-    elapsed_remainder: std::time::Duration,
+    pace: speed::Pace,
 }
 
 /// The off-thread backend: the actor handle, its update channel, and the last
@@ -171,6 +187,12 @@ pub struct ActorPhysics {
     /// The rms speed the last folded snapshot carried.
     speed: f32,
     command_epoch: u64,
+    /// The simulation speed set (the dial), not the bodies' rms speed.
+    dial: Speed,
+    /// The budget the host last set, as it gave it.
+    budget: Option<StepBudget>,
+    /// The pace the last folded snapshot carried.
+    pace: PaceStats,
 }
 
 #[cfg(feature = "actor")]
@@ -216,7 +238,7 @@ impl Physics {
             dragging: false,
             generation: 0,
             halted: false,
-            elapsed_remainder: std::time::Duration::ZERO,
+            pace: speed::Pace::default(),
         })
     }
 
@@ -235,9 +257,22 @@ impl Physics {
         let initial_settle = inline.ticks_remaining;
         let dragging = inline.dragging;
         let halted = inline.halted;
+        let speed = inline.pace.speed;
+        let pace = inline.pace.stats();
         let settling = should_tick(&sim, initial_settle, dragging, halted);
+        let state = ActorState {
+            ticks_remaining: initial_settle,
+            dragging,
+            halted,
+            command_epoch: 0,
+            pace: speed::Pace::for_actor(
+                speed,
+                pace.ticks,
+                inline.pace.budget.map(|budget| budget.per_frame),
+            ),
+        };
         let (handle, updates) = spawn(wake, move |commands, out| {
-            run(sim, initial_settle, dragging, halted, commands, out);
+            run(sim, state, commands, out);
         });
         *self = Physics::Actor(ActorPhysics {
             handle,
@@ -246,7 +281,69 @@ impl Physics {
             energy: 0.0,
             speed: 0.0,
             command_epoch: 0,
+            dial: speed,
+            budget: inline.pace.budget,
+            pace,
         });
+    }
+
+    /// Set the simulation speed: ticks per frame at the fixed [`TICK_DT`].
+    /// The trajectory does not depend on it.
+    pub fn set_speed(&mut self, speed: Speed) {
+        match self {
+            Physics::Inline(p) => {
+                p.pace.speed = speed;
+                if speed >= Speed::REAL_TIME {
+                    p.pace.previous = None;
+                }
+            },
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.dial = speed;
+                p.handle.command(PhysicsCommand::SetSpeed(speed));
+            },
+        }
+    }
+
+    pub fn speed(&self) -> Speed {
+        match self {
+            Physics::Inline(p) => p.pace.speed,
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.dial,
+        }
+    }
+
+    /// Bound a frame's ticks above real time (see [`StepBudget`]). Offloaded,
+    /// the actor measures on its own clock and the host's is ignored.
+    pub fn set_step_budget(&mut self, budget: Option<StepBudget>) {
+        match self {
+            Physics::Inline(p) => p.pace.budget = budget,
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.budget = budget;
+                p.handle.command(PhysicsCommand::SetStepBudget(
+                    budget.map(|budget| budget.per_frame),
+                ));
+            },
+        }
+    }
+
+    /// The step budget last set, as the host gave it.
+    pub fn step_budget(&self) -> Option<StepBudget> {
+        match self {
+            Physics::Inline(p) => p.pace.budget,
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.budget,
+        }
+    }
+
+    /// Ticks run, the effective speed, and whether the budget bound.
+    pub fn pace(&self) -> PaceStats {
+        match self {
+            Physics::Inline(p) => p.pace.stats(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.pace,
+        }
     }
 
     /// Reconcile the body set (see [`PhysicsCommand::SyncNodes`]).
@@ -276,7 +373,7 @@ impl Physics {
         match self {
             Physics::Inline(p) => {
                 p.sim.seed_positions(positions);
-                p.elapsed_remainder = std::time::Duration::ZERO;
+                p.pace.forget();
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
@@ -336,16 +433,6 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SetForces(forces));
             },
-        }
-    }
-
-    /// The node bodies' rms speed (see [`Simulation::rms_speed`]): live
-    /// inline, the last folded snapshot's offloaded. (G7, F46.)
-    pub fn rms_speed(&self) -> f32 {
-        match self {
-            Physics::Inline(p) => p.sim.rms_speed(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.speed,
         }
     }
 
@@ -456,18 +543,6 @@ impl Physics {
             Physics::Actor(p) => {
                 p.handle
                     .command(PhysicsCommand::SetNodeMaterials(materials));
-            },
-        }
-    }
-
-    /// Hold node bodies on the given axes (an encoded axis, F28); see
-    /// [`Simulation::set_axis_locks`]. (Dynamics grammar plan, G7.)
-    pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
-        match self {
-            Physics::Inline(p) => p.sim.set_axis_locks(locks),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetAxisLocks(locks));
             },
         }
     }
@@ -645,7 +720,8 @@ impl Physics {
                 p.ticks_remaining = 0;
                 p.dragging = false;
                 p.halted = true;
-                p.elapsed_remainder = std::time::Duration::ZERO;
+                p.pace.forget();
+                p.pace.meter.clear();
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
@@ -668,18 +744,6 @@ impl Physics {
         }
     }
 
-    /// Why the layout keeps moving, for a host's diagnostics: whether the
-    /// world asks for ticks of its own (a scene, or a force such as a flow
-    /// that has not converged), and the settle budget left. The actor reports
-    /// neither and answers `(false, 0)`.
-    pub fn tick_demand(&self) -> (bool, u32) {
-        match self {
-            Physics::Inline(p) => (p.sim.wants_continuous_tick(), p.ticks_remaining),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => (false, 0),
-        }
-    }
-
     /// Whether the layout is still moving (settle in progress or a node dragged).
     pub fn is_settling(&self) -> bool {
         match self {
@@ -695,258 +759,77 @@ impl Physics {
     pub fn refresh(&mut self, view: &mut LayoutView) {
         match self {
             Physics::Inline(p) => {
-                p.generation = p.generation.wrapping_add(1);
-                view.apply_snapshot(&p.sim.snapshot(p.generation));
+                let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);
+                speed::fold(p, view, settling);
             },
             #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                if let Some(update) = p.latest() {
-                    view.apply_snapshot(&update.snapshot);
-                    p.settling = update.settling;
-                    p.energy = update.snapshot.energy;
-                    p.speed = update.snapshot.speed;
-                }
-            },
+            Physics::Actor(p) => p.fold_latest(view),
         }
     }
 
     /// Advance one frame, folding the latest positions into `view`, and return
     /// whether the layout is still settling.
     ///
-    /// - Inline: step the simulation (while settling or dragging) and snapshot it.
+    /// - Inline: owe one frame-equivalent ([`TICK_DURATION`]) at the speed, so
+    ///   one tick a call at real time, and snapshot. Deterministic callers own
+    ///   their tick count: a fraction from elapsed-time driving does not carry.
     /// - Actor: drain the update channel, applying the most recent snapshot
     ///   (older queued ones are superseded — only the freshest layout matters).
     pub fn advance_frame(&mut self, view: &mut LayoutView) -> bool {
         match self {
-            Physics::Inline(p) => {
-                // Deterministic callers own their tick count. Do not carry a
-                // fraction from a previous elapsed-time driving mode into it.
-                p.elapsed_remainder = std::time::Duration::ZERO;
-                if should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted) {
-                    p.sim.tick(TICK_DT);
-                    if p.ticks_remaining > 0 {
-                        p.ticks_remaining -= 1;
-                    }
-                }
-                p.generation = p.generation.wrapping_add(1);
-                view.apply_snapshot(&p.sim.snapshot(p.generation));
-                should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted)
-            },
+            Physics::Inline(p) => speed::advance_frame(p, view),
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
-                if let Some(update) = p.latest() {
-                    view.apply_snapshot(&update.snapshot);
-                    p.settling = update.settling;
-                    p.energy = update.snapshot.energy;
-                    p.speed = update.snapshot.speed;
-                }
+                p.fold_latest(view);
                 p.settling
             },
         }
     }
-}
 
-#[cfg(feature = "actor")]
-/// The actor thread body: own the simulation, apply commands, and tick at ~60Hz
-/// while there is work, emitting a snapshot per step. Parks on `recv` when idle
-/// (no busy-spin), and ends when the command channel closes (the handle drops).
-fn run(
-    mut sim: Simulation,
-    initial_settle: u32,
-    initial_dragging: bool,
-    initial_halted: bool,
-    commands: Receiver<PhysicsCommand>,
-    out: Emitter<PhysicsUpdate>,
-) {
-    let mut ticks_remaining = initial_settle;
-    let mut dragging = initial_dragging;
-    let mut halted = initial_halted;
-    let mut command_epoch = 0;
-    let mut generation: u64 = 0;
-    // Pace the active settle at the simulation timestep so it does not run the
-    // whole budget in microseconds and burn a core.
-    let pacing = Duration::from_secs_f32(TICK_DT);
+    /// The node bodies' rms speed (see [`Simulation::rms_speed`]): live
+    /// inline, the last folded snapshot's offloaded. (G7, F46.)
+    pub fn rms_speed(&self) -> f32 {
+        match self {
+            Physics::Inline(p) => p.sim.rms_speed(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.speed,
+        }
+    }
 
-    loop {
-        let mut changed = false;
-        // Idle: block for the next command so the thread parks. A closed channel
-        // (the host dropped the handle) ends the actor. A perpetual scene (a drifting
-        // backdrop) is never idle, so the actor keeps ticking instead of parking.
-        if !should_tick(&sim, ticks_remaining, dragging, halted) {
-            match commands.recv() {
-                Ok(cmd) => {
-                    apply(
-                        &mut sim,
-                        cmd,
-                        &mut ticks_remaining,
-                        &mut dragging,
-                        &mut halted,
-                        &mut command_epoch,
-                    );
-                    changed = true;
-                },
-                Err(_) => return,
-            }
+    /// Hold node bodies on the given axes (an encoded axis, F28); see
+    /// [`Simulation::set_axis_locks`]. (Dynamics grammar plan, G7.)
+    pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
+        match self {
+            Physics::Inline(p) => p.sim.set_axis_locks(locks),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetAxisLocks(locks));
+            },
         }
-        // Drain any further pending commands without blocking. A disconnect means
-        // the host is gone: stop accepting commands, but still run out whatever
-        // settle is already queued before exiting (so a drop right after a
-        // `Settle` does not throw away the layout work).
-        let mut disconnected = false;
-        loop {
-            match commands.try_recv() {
-                Ok(cmd) => {
-                    apply(
-                        &mut sim,
-                        cmd,
-                        &mut ticks_remaining,
-                        &mut dragging,
-                        &mut halted,
-                        &mut command_epoch,
-                    );
-                    changed = true;
-                },
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    disconnected = true;
-                    break;
-                },
-            }
-        }
-        // Step while there is work (a settle, a drag, or a perpetual scene); emit the new
-        // layout and pace the next step.
-        let stepped = should_tick(&sim, ticks_remaining, dragging, halted);
-        if stepped {
-            sim.tick(TICK_DT);
-            if ticks_remaining > 0 {
-                ticks_remaining -= 1;
-            }
-        }
-        // Seed/Halt must acknowledge their placement even when no tick follows.
-        if stepped || changed {
-            generation = generation.wrapping_add(1);
-            let settling = should_tick(&sim, ticks_remaining, dragging, halted);
-            out.emit(PhysicsUpdate {
-                snapshot: sim.snapshot(generation),
-                settling,
-                command_epoch,
-            });
-        }
-        if stepped {
-            std::thread::sleep(pacing);
-        }
-        // Host gone and the settle budget spent: wind down.
-        if disconnected && ticks_remaining == 0 {
-            return;
+    }
+
+    /// Why the layout keeps moving, for a host's diagnostics: whether the
+    /// world asks for ticks of its own (a scene, or a force such as a flow
+    /// that has not converged), and the settle budget left. The actor reports
+    /// neither and answers `(false, 0)`.
+    pub fn tick_demand(&self) -> (bool, u32) {
+        match self {
+            Physics::Inline(p) => (p.sim.wants_continuous_tick(), p.ticks_remaining),
+            #[cfg(feature = "actor")]
+            Physics::Actor(_) => (false, 0),
         }
     }
 }
 
 #[cfg(feature = "actor")]
-/// Fold one command into the actor's simulation + settle/drag state.
-fn apply(
-    sim: &mut Simulation,
-    cmd: PhysicsCommand,
-    ticks_remaining: &mut u32,
-    dragging: &mut bool,
-    halted: &mut bool,
-    command_epoch: &mut u64,
-) {
-    match cmd {
-        PhysicsCommand::SyncNodes(nodes) => sim.sync_nodes(nodes),
-        PhysicsCommand::SyncEdges(edges) => sim.sync_edges(edges),
-        PhysicsCommand::Seed(positions) => sim.seed_positions(positions),
-        PhysicsCommand::Barrier(epoch) => *command_epoch = (*command_epoch).max(epoch),
-        PhysicsCommand::Pin(node, position) => sim.pin(node, position),
-        PhysicsCommand::Unpin(node) => sim.unpin(node),
-        PhysicsCommand::Settle(n) => {
-            *ticks_remaining = (*ticks_remaining).max(n);
-            if n > 0 {
-                *halted = false;
-            }
-        },
-        PhysicsCommand::Halt => {
-            *ticks_remaining = 0;
-            *dragging = false;
-            *halted = true;
-        },
-        PhysicsCommand::SetDragging(d) => *dragging = d,
-        PhysicsCommand::SetCouplingForces(forces) => sim.set_coupling_forces(forces),
-        PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),
-        PhysicsCommand::SetAnchorForce(force) => sim.set_anchor_force(force),
-        PhysicsCommand::SetForces(forces) => sim.set_forces(forces),
-        PhysicsCommand::SetLaggedRepulsion {
-            solver,
-            threshold,
-            max_stale_steps,
-        } => sim.set_lagged_repulsion(solver, threshold, max_stale_steps),
-        PhysicsCommand::SetLinearDamping(damping) => sim.set_linear_damping(damping),
-        PhysicsCommand::SetNodeColliders(colliders) => sim.set_node_colliders(colliders),
-        PhysicsCommand::SetNodeMaterials(materials) => sim.set_node_materials(materials),
-        PhysicsCommand::SetAxisLocks(locks) => sim.set_axis_locks(locks),
-        PhysicsCommand::AddSceneBody(collider, position, velocity) => {
-            sim.add_scene_body(collider, position, velocity);
-        },
-        PhysicsCommand::SetNodesTangible(tangible) => sim.set_nodes_tangible(tangible),
-        PhysicsCommand::LoadScene(spec) => sim.load_scene(&spec),
-        PhysicsCommand::ClearScene => sim.clear_scene(),
-        PhysicsCommand::LoadFluid {
-            params,
-            basin,
-            origin,
-            cols,
-            rows,
-            spacing,
-        } => sim.load_fluid(params, basin, origin, cols, rows, spacing),
-        PhysicsCommand::ClearFluid => sim.clear_fluid(),
-        PhysicsCommand::SetSceneField(field) => sim.set_scene_field(field),
-        PhysicsCommand::AddEmitter(spec) => sim.add_emitter(spec),
-        PhysicsCommand::ClearEmitters => sim.clear_emitters(),
-    }
-}
-
-#[cfg(all(test, feature = "actor"))]
-mod tests {
-    use std::sync::Arc;
-
-    use euclid::default::Point2D;
-
-    use super::*;
-
-    /// The actor processes a sync + settle and emits layout snapshots, then ends
-    /// cleanly when the handle drops. (The physics math itself is seiche's concern;
-    /// this is a protocol smoke test of the run loop.)
-    #[test]
-    fn actor_syncs_settles_and_emits_snapshots() {
-        let (a, b) = (NodeKey::new(0), NodeKey::new(1));
-
-        let mut sim = Simulation::new();
-        sim.add_force(crate::NodeExclusion::default());
-        let wake: Wake = Arc::new(|| {});
-        let (handle, updates) = spawn(wake, move |commands, out| {
-            run(sim, 0, false, false, commands, out)
-        });
-
-        handle.command(PhysicsCommand::SyncNodes(vec![
-            (a, Point2D::new(0.0, 0.0)),
-            (b, Point2D::new(1.0, 0.0)),
-        ]));
-        handle.command(PhysicsCommand::SyncEdges(vec![(a, b)]));
-        handle.command(PhysicsCommand::Settle(4));
-        // Dropping the handle closes the command channel; the actor finishes its
-        // settle, then ends. `iter` collects every emitted update to completion.
-        drop(handle);
-
-        let emitted: Vec<PhysicsUpdate> = updates.iter().collect();
-        assert!(
-            !emitted.is_empty(),
-            "the actor emitted at least one layout snapshot"
-        );
-        let last = emitted.last().unwrap();
-        assert_eq!(
-            last.snapshot.positions.len(),
-            2,
-            "both bodies are in the snapshot"
-        );
+impl ActorPhysics {
+    fn fold_latest(&mut self, view: &mut LayoutView) {
+        if let Some(update) = self.latest() {
+            view.apply_snapshot(&update.snapshot);
+            self.settling = update.settling;
+            self.energy = update.snapshot.energy;
+            self.speed = update.snapshot.speed;
+            self.pace = update.pace;
+        }
     }
 }

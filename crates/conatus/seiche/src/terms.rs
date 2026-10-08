@@ -47,6 +47,9 @@ pub struct Term {
     /// The mass metric an Em term descends in (and an H term is conservative in).
     pub metric: Option<Metric>,
     pub observable: Observable,
+    /// Written once rather than every tick: an initial condition (Orbit's
+    /// kick), which does not decide how the law's motion enters the step.
+    pub initial: bool,
 }
 
 impl Term {
@@ -67,7 +70,14 @@ impl Term {
             class,
             metric: None,
             observable,
+            initial: false,
         }
+    }
+
+    /// The same term written once, as an initial condition.
+    pub const fn once(mut self) -> Self {
+        self.initial = true;
+        self
     }
 
     /// The same term weighted by a metric channel.
@@ -294,6 +304,25 @@ pub trait Declared {
     /// Term `term`'s metric weights at `layout`, one per node in layout
     /// order, for a term declared with a metric.
     fn metric(&self, _term: usize, _layout: &Layout<'_>) -> Option<Vec<f64>> {
+        None
+    }
+
+    /// Whether term `term` has a resident kernel or the lagged upload, so a
+    /// resident law can take it ([`crate::compose`]).
+    fn resident(&self, _term: usize) -> bool {
+        false
+    }
+
+    /// Term `term` on the common scale ([`crate::scale`], F5): where its
+    /// weight is read and the weight, its force there. `None` for a term
+    /// whose kernel F5 gives no reference.
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        None
+    }
+
+    /// This force with term `term` at `weight` on the common scale, every
+    /// other parameter kept.
+    fn reweighted(&self, _term: usize, _weight: f64) -> Option<Box<dyn Force>> {
         None
     }
 }

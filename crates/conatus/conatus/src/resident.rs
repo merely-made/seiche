@@ -34,10 +34,9 @@
 //! [`crate::resident::Resident::new`] takes handles rather than booting.
 
 use bytemuck::{Pod, Zeroable};
-use cubecl::client::ComputeClient;
+use cubecl::client::Client;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use cubecl::wgpu::WgpuRuntime;
 
 pub mod binning;
 mod chunk;
@@ -96,7 +95,7 @@ pub struct Adjacency<'a> {
 /// A resident simulation: buffers on the host's device, and the three
 /// dispatches that advance them.
 pub struct Resident {
-    client: ComputeClient<WgpuRuntime>,
+    client: Client,
     params: Params,
     /// Padded 3D positions, allocated on the shared CubeCL client and
     /// published to consumers as a lease rather than a raw buffer, so a
@@ -156,7 +155,7 @@ impl Resident {
 
         let resolve = |handle: &Handle| {
             let managed = compute
-                .get_resource(handle.clone())
+                .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(handle.clone())
                 .expect("resident allocation");
             let resource = managed.resource();
             (resource.buffer.clone(), resource.offset, resource.size)
@@ -220,7 +219,7 @@ impl Resident {
         let cubes = self.params.n.div_ceil(kernels::CUBE_DIM).max(1);
         let count = self.params.n as usize;
         unsafe {
-            kernels::repulse::launch_unchecked::<WgpuRuntime>(
+            kernels::repulse::launch_unchecked(
                 &self.client,
                 CubeCount::Static(cubes, 1, 1),
                 CubeDim::new_1d(kernels::CUBE_DIM),
@@ -239,7 +238,7 @@ impl Resident {
         let count = self.params.n as usize;
         let dim = CubeDim::new_1d(kernels::CUBE_DIM);
         unsafe {
-            kernels::clear_settle::launch_unchecked::<WgpuRuntime>(
+            kernels::clear_settle::launch_unchecked(
                 &self.client,
                 CubeCount::Static(1, 1, 1),
                 CubeDim::new_1d(1),
@@ -250,7 +249,7 @@ impl Resident {
             self.repulse_only();
         }
         unsafe {
-            kernels::springs::launch_unchecked::<WgpuRuntime>(
+            kernels::springs::launch_unchecked(
                 &self.client,
                 CubeCount::Static(cubes, 1, 1),
                 dim,
@@ -262,7 +261,7 @@ impl Resident {
                 self.params.spring_k,
                 self.params.rest_length,
             );
-            kernels::integrate::launch_unchecked::<WgpuRuntime>(
+            kernels::integrate::launch_unchecked(
                 &self.client,
                 CubeCount::Static(cubes, 1, 1),
                 dim,

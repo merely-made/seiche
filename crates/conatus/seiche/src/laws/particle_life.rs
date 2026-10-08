@@ -178,6 +178,22 @@ impl ParticleLife {
 /// The kind-matrix term is N exactly while the matrix is asymmetric; with a
 /// symmetric matrix it is a pair potential (E) and exposes its energy.
 impl Declared for ParticleLife {
+    /// The centring at the unit length; F5 names no reference for the tent.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        (term == 1).then(|| crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: crate::scale::at_offset(self.gravity),
+        })
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        (term == 1).then(|| {
+            let mut force = self.clone();
+            force.gravity = crate::scale::strength_at_offset(weight);
+            Box::new(force) as Box<dyn Force>
+        })
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

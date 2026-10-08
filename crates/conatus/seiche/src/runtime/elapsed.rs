@@ -1,4 +1,7 @@
 // Copyright 2026 Mark Alan Boykin
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // SPDX-License-Identifier: MPL-2.0
 
 //! Bounded elapsed-time driving of the inline backend. Hosts supply time;
@@ -6,7 +9,8 @@
 
 use std::time::Duration;
 
-use super::{LayoutView, Physics, TICK_DT, should_tick};
+use super::speed::{self, Driver, TICK_UNITS};
+use super::{LayoutView, Physics, should_tick};
 
 /// The nominal 60 Hz interval, rounded to the nearest nanosecond. Each
 /// accepted interval still integrates with the existing [`TICK_DT`].
@@ -14,7 +18,8 @@ pub const TICK_DURATION: Duration = Duration::from_nanos(16_666_667);
 
 /// Caller-selected limits for one inline advancement. Defaults follow the
 /// existing browser practice board's 50 ms catch-up cap. Zero limits are
-/// valid: no elapsed contribution or no steps, respectively.
+/// valid: no elapsed contribution or no steps, respectively. `max_steps` is
+/// given for real time and scales with the speed (rounded up).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ElapsedStepConfig {
     pub max_elapsed: Duration,
@@ -41,6 +46,18 @@ pub struct ElapsedStepReport {
     /// Only a fraction smaller than one tick can carry to the next call.
     pub carried_elapsed: Duration,
     pub settling: bool,
+    /// Whole ticks the speed owed this call, before any cap.
+    pub owed_steps: u32,
+    /// The step budget stopped this call short of what was owed.
+    pub budget_bound: bool,
+    /// Time spent stepping, when a budget's clock is installed.
+    pub compute: Option<Duration>,
+    /// Ticks the step budget's gate admitted past the 1x floor, and when the
+    /// last of them ended: the time the budget bounds (ruled 2026-10-05,
+    /// "Only ticks past the floor"). The floor's own ticks run whatever the
+    /// budget, so fast-forward is never slower than 1x.
+    pub admitted: u32,
+    pub admitted_until: Option<Duration>,
 }
 
 impl Physics {
@@ -48,9 +65,14 @@ impl Physics {
     /// hides a surface. The host must also reset its own last timestamp so the
     /// first resumed call excludes the hidden interval. Does not halt physics,
     /// change positions, or send any command to an independently paced actor.
+    /// A deterministic driver's fraction (a slow speed's next tick) stays.
     pub fn reset_elapsed(&mut self) {
         match self {
-            Self::Inline(p) => p.elapsed_remainder = Duration::ZERO,
+            Self::Inline(p) => {
+                if p.pace.driver == Some(Driver::Elapsed) {
+                    p.pace.forget();
+                }
+            },
             #[cfg(feature = "actor")]
             Self::Actor(_) => {},
         }
@@ -71,35 +93,49 @@ impl Physics {
     ) -> ElapsedStepReport {
         match self {
             Self::Inline(p) => {
+                // Owed time is simulated nanoseconds times a thousand: wall
+                // time times the speed in thousandths. Reports are wall time.
+                p.pace.drive(Driver::Elapsed);
+                let milli = u64::from(p.pace.milli());
                 let accepted = elapsed.min(config.max_elapsed);
-                let mut available = p.elapsed_remainder.saturating_add(accepted);
-                let mut report = ElapsedStepReport {
-                    discarded_elapsed: elapsed - accepted,
-                    ..ElapsedStepReport::default()
-                };
-                while available >= TICK_DURATION
-                    && report.steps < config.max_steps
-                    && should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted)
-                {
-                    p.sim.tick(TICK_DT);
-                    if p.ticks_remaining > 0 {
-                        p.ticks_remaining -= 1;
-                    }
-                    report.steps += 1;
-                    available -= TICK_DURATION;
-                }
-                report.settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);
-                report.carried_elapsed = if report.settling {
-                    Duration::from_nanos((available.as_nanos() % TICK_DURATION.as_nanos()) as u64)
+                p.pace.owe(speed::nanos(accepted));
+                let owed_steps = p.pace.owed_steps();
+                let cap = p.pace.scaled_cap(config.max_steps);
+                // What real time would run in this call: the budget's floor.
+                let floor = (speed::nanos(accepted) / speed::TICK_NS)
+                    .min(u64::from(config.max_steps)) as u32;
+                let clock = p.pace.budget.map(|budget| budget.clock);
+                let stepped = speed::step_owed(
+                    &mut p.sim,
+                    &mut p.pace,
+                    &mut p.ticks_remaining,
+                    p.dragging,
+                    p.halted,
+                    cap,
+                    floor,
+                    clock,
+                );
+                let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);
+                let carried = if settling {
+                    p.pace.owed % TICK_UNITS
                 } else {
-                    Duration::ZERO
+                    0
                 };
-                report.discarded_elapsed = report
-                    .discarded_elapsed
-                    .saturating_add(available - report.carried_elapsed);
-                p.elapsed_remainder = report.carried_elapsed;
-                p.generation = p.generation.wrapping_add(1);
-                view.apply_snapshot(&p.sim.snapshot(p.generation));
+                let dropped = p.pace.owed - carried;
+                speed::settle_meter(p, speed::nanos(elapsed), stepped.steps, settling);
+                let report = ElapsedStepReport {
+                    steps: stepped.steps,
+                    discarded_elapsed: (elapsed - accepted)
+                        .saturating_add(Duration::from_nanos(dropped / milli)),
+                    carried_elapsed: Duration::from_nanos(carried / milli),
+                    settling,
+                    owed_steps,
+                    budget_bound: stepped.budget_bound,
+                    compute: stepped.compute,
+                    admitted: stepped.admitted,
+                    admitted_until: stepped.admitted_until,
+                };
+                speed::fold(p, view, settling);
                 report
             },
             #[cfg(feature = "actor")]

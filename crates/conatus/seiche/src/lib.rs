@@ -66,9 +66,12 @@ pub type NodeKey = petgraph::stable_graph::NodeIndex;
 /// instead of owning a frame loop and a settle budget of its own. (Lifted out
 /// of `mere-canvas` 2026-09-04.)
 pub mod runtime;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use runtime::monotonic_clock;
 pub use runtime::{
-    ElapsedStepConfig, ElapsedStepReport, Physics, PhysicsCommand, PhysicsUpdate, TICK_DT,
-    TICK_DURATION,
+    DEFAULT_BUDGET_SHARE, ElapsedStepConfig, ElapsedStepReport, FALLBACK_DISPLAY_PERIOD, PaceStats,
+    Physics, PhysicsCommand, PhysicsUpdate, Speed, StepBudget, TICK_DT, TICK_DURATION,
+    display_period,
 };
 
 /// What each force is, term by term (topology, kernel, state, currency,
@@ -78,6 +81,17 @@ pub mod terms;
 pub use terms::{
     Class, Currency, Declared, Kernel, Layout, Metric, Observable, State, Term, Topology,
 };
+
+/// The combinators (dynamics grammar plan, G3): composition by currency, the
+/// weighted sum, groups, and the observables their receipts read.
+pub mod compose;
+pub mod grouped;
+pub mod observe;
+pub mod scale;
+pub mod weighted;
+pub use compose::Admission;
+pub use grouped::{Grouped, Partition, Spread};
+pub use weighted::Weighted;
 
 /// Built-in force forces for the force-directed orrery layout.
 pub mod forces;

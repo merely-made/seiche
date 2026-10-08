@@ -148,6 +148,40 @@ impl LinLogForce {
 }
 
 impl Declared for LinLogForce {
+    /// The repulsion and the attraction at contact (F80) and the centring
+    /// at the unit length, each at unit degree weight.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        match term {
+            0 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Contact,
+                weight: crate::scale::at_contact(self.repulsion, -1.0),
+            }),
+            1 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Contact,
+                weight: crate::scale::at_contact(self.attraction, self.attraction_exponent),
+            }),
+            2 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Offset,
+                weight: crate::scale::at_offset(self.gravity),
+            }),
+            _ => None,
+        }
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        match term {
+            0 => force.repulsion = crate::scale::strength_at_contact(weight, -1.0),
+            1 => {
+                force.attraction =
+                    crate::scale::strength_at_contact(weight, self.attraction_exponent)
+            },
+            2 => force.gravity = crate::scale::strength_at_offset(weight),
+            _ => return None,
+        }
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

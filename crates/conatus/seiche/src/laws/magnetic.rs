@@ -118,6 +118,34 @@ impl Force for MagneticSpring {
 /// is a gradient times a non-constant length factor, which has a curl (the
 /// brief's finding F-d; declared as it is, ruled 2026-10-02, F8).
 impl Declared for MagneticSpring {
+    /// The repulsion at contact and the spring at one rest length of
+    /// stretch; F5 names no reference for the needle.
+    fn scale(&self, term: usize) -> Option<crate::scale::Scale> {
+        match term {
+            0 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Contact,
+                weight: crate::scale::at_contact(self.repulsion, -2.0),
+            }),
+            1 => Some(crate::scale::Scale {
+                reference: crate::scale::Reference::Stretch {
+                    rest: self.rest_length,
+                },
+                weight: crate::scale::at_stretch(self.stiffness, self.rest_length),
+            }),
+            _ => None,
+        }
+    }
+
+    fn reweighted(&self, term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        match term {
+            0 => force.repulsion = crate::scale::strength_at_contact(weight, -2.0),
+            1 => force.stiffness = crate::scale::stiffness_at_stretch(weight, self.rest_length),
+            _ => return None,
+        }
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![
             Term::force(

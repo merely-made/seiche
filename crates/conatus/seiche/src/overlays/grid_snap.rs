@@ -49,6 +49,22 @@ impl Force for GridSnap {
 }
 
 impl Declared for GridSnap {
+    /// The pull half a cell from the grid point (F79, "170, Grid at half
+    /// cell"): the unit length does not fit inside a cell.
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        let cell = self.cell.max(1.0);
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::HalfCell { cell },
+            weight: f64::from(self.strength) * f64::from(cell / 2.0),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = *self;
+        force.strength = (weight / f64::from(self.cell.max(1.0) / 2.0)) as f32;
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "grid",

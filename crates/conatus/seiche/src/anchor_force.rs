@@ -108,6 +108,20 @@ impl Force for AnchorSpring {
 /// The anchored role's target term: a spring to each anchored node's
 /// position with a slack, class E.
 impl Declared for AnchorSpring {
+    /// A unary pull with a dead band: `k·(|o| − slack)` at the unit length.
+    fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
+        Some(crate::scale::Scale {
+            reference: crate::scale::Reference::Offset,
+            weight: f64::from(self.stiffness) * f64::from(crate::scale::UNIT_LENGTH - self.slack),
+        })
+    }
+
+    fn reweighted(&self, _term: usize, weight: f64) -> Option<Box<dyn Force>> {
+        let mut force = self.clone();
+        force.stiffness = (weight / f64::from(crate::scale::UNIT_LENGTH - self.slack)) as f32;
+        Some(Box::new(force))
+    }
+
     fn terms(&self) -> Vec<Term> {
         vec![Term::force(
             "anchor",

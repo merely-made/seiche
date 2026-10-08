@@ -18,10 +18,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
-use cubecl::client::ComputeClient;
+use cubecl::client::Client;
 use cubecl::prelude::*;
 use cubecl::server::ServerError;
-use cubecl::wgpu::WgpuRuntime;
 
 use super::binning::{self, Grid};
 use super::{ResidentClient, kernels};
@@ -76,7 +75,7 @@ type Readback =
 /// The exclusion dispatch on a host's CubeCL client.
 pub struct Exclusion {
     resident: ResidentClient,
-    client: ComputeClient<WgpuRuntime>,
+    client: Client,
     dispatches: u64,
     cell_dispatches: u64,
     cell_threshold: usize,
@@ -183,7 +182,7 @@ impl Exclusion {
             Some(grid) => {
                 let (starts, sorted) = binning::bin(&self.client, &input, n, grid);
                 unsafe {
-                    kernels::exclude_cells::launch_unchecked::<WgpuRuntime>(
+                    kernels::exclude_cells::launch_unchecked(
                         &self.client,
                         CubeCount::Static(cubes, 1, 1),
                         CubeDim::new_1d(kernels::CUBE_DIM),
@@ -205,7 +204,7 @@ impl Exclusion {
                 self.cell_dispatches += 1;
             },
             None => unsafe {
-                kernels::exclude::launch_unchecked::<WgpuRuntime>(
+                kernels::exclude::launch_unchecked(
                     &self.client,
                     CubeCount::Static(cubes, 1, 1),
                     CubeDim::new_1d(kernels::CUBE_DIM),

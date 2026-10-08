@@ -320,3 +320,42 @@ fn passes_stop_on_the_test_or_the_cap_and_a_drag_rearms_them() {
         "the cap ended it at three passes"
     );
 }
+
+/// Why Density's conversion is off until it takes a force (dynamics grammar
+/// plan, G3): converting changes Density alone on a crowded start. Each
+/// tick the moving bodies start at rest, so the contacts that push the
+/// crowd's overlapping bodies apart no longer carry over, and the crowd
+/// spreads less in the same 360 ticks. Both medians are printed.
+#[test]
+fn converting_changes_density_alone_on_a_crowded_start() {
+    let median = |converts: bool| {
+        let nodes = crowd(24);
+        let mut sim = Simulation::new();
+        sim.sync_nodes(nodes.clone());
+        sim.sync_edges(Vec::<(NodeKey, NodeKey)>::new());
+        let mut law = Density::new(nodes.iter().map(|(k, _)| (*k, 1.0)), 64);
+        law.converts = converts;
+        sim.set_forces(vec![Box::new(law)]);
+        for _ in 0..360 {
+            sim.tick(1.0 / 60.0);
+        }
+        let at: Vec<Point2D<f32>> = sim.positions().map(|(_, p)| p).collect();
+        let mut nearest: Vec<f32> = at
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                at.iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, o)| (*o - *p).length())
+                    .fold(f32::MAX, f32::min)
+            })
+            .collect();
+        nearest.sort_by(f32::total_cmp);
+        nearest[nearest.len() / 2]
+    };
+    let (off, on) = (median(false), median(true));
+    println!("crowd of 24 after 360 ticks: median nearest {off:.2} as built, {on:.2} converting");
+    assert!(off > 36.0, "as built the crowd spreads: {off}");
+    assert!(on < off, "converting, it spreads less: {on} against {off}");
+}
