@@ -16,7 +16,9 @@ path = "src/lib.rs"
 # behavior (node exclusion, edge springs, themable moot fields) all
 # resolve through this simulation, so the dep lands as a foundational
 # layer alongside vello and petgraph rather than a feature bolt-on.
-rapier2d = "0.33"
+# enhanced-determinism (F165, carrying part of G8): cross-platform float
+# results through libm and glamx scalar-math.
+rapier2d = { version = "0.36", features = ["enhanced-determinism"] }
 # NodeKey (the opaque body identifier) is petgraph's NodeIndex, the same type mere's
 # kernel and chartulary use, so seiche stays graph-agnostic without depending on
 # either; a consumer feeds its own node keys + positions in.

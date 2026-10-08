@@ -11,7 +11,8 @@ categories = ["game-engines", "simulation"]
 
 [dependencies]
 nisus = { workspace = true }
-rapier3d = "0.33"
+# enhanced-determinism: wing ruling 604 and F165, replay bit for bit.
+rapier3d = { version = "0.36", features = ["enhanced-determinism"] }
 serde = { version = "1", features = ["derive"] }
 wgpu = { version = "30", default-features = false, features = ["wgsl"], optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
