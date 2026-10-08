@@ -88,9 +88,12 @@ pub mod compose;
 pub mod grouped;
 pub mod observe;
 pub mod scale;
+/// The dynamics spec: a live layout's drive as portable data (G4).
+pub mod spec;
 pub mod weighted;
 pub use compose::Admission;
 pub use grouped::{Grouped, Partition, Spread};
+pub use spec::{DynamicsSpec, SpecCatalog, SpecError};
 pub use weighted::Weighted;
 
 /// Built-in force forces for the force-directed orrery layout.

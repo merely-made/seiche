@@ -29,8 +29,14 @@ use rapier2d::prelude::*;
 
 use crate::{NodeKey, Simulation};
 
-/// The role an item's arrangement position plays.
+/// The role an item's arrangement position plays. Serialized by its id
+/// (`seeded`, `anchored`, `pinned`), as [`Role::id`] names it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "kebab-case")
+)]
 pub enum Role {
     /// The position seeds the motion and is not referred to again.
     #[default]

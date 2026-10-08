@@ -25,8 +25,9 @@
 //! calibrated strengths are their weights, so the default compositions are
 //! unchanged. Alignment, phase coupling, the needle, the two drives, the
 //! writes and Density's diffusion depend on no distance and report none,
-//! weight 1 meaning as calibrated. Particle life's tent reports none while
-//! its reading at contact, which lands in its repulsive core, is before Mark.
+//! weight 1 meaning as calibrated. Particle life's tent reports none: at
+//! contact it reads its repulsive core whatever the kind rule, so it stays
+//! off the scale (F90, "Off the scale").
 //!
 //! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G3.
 

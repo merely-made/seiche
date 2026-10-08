@@ -217,6 +217,11 @@ pub enum Metric {
 
 /// The measure that shows a term working (a receipt's signature).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "kebab-case")
+)]
 pub enum Observable {
     /// Node pairs closer than a body's diameter.
     Overlaps,
