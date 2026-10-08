@@ -5,7 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! The spec's wire (F98, F104): JSON and TOML round trips, the version
-//! read in `sceno::Score`'s pattern, and unknown names refused.
+//! read in `sceno::Score`'s pattern, and unknown names refused, each
+//! refusal naming its path (F113): every read goes through [`read`].
 
 use super::*;
 
@@ -110,11 +111,23 @@ pub(crate) fn rich() -> DynamicsSpec {
     spec
 }
 
+/// JSON text, read as a scene's facet reads it: through a value.
+fn from_json(text: &str) -> Result<DynamicsSpec, SpecReadError> {
+    let value: serde_json::Value = serde_json::from_str(text).expect("JSON text");
+    read(&value)
+}
+
+/// TOML text, read as a recipe.
+fn from_toml(text: &str) -> Result<DynamicsSpec, SpecReadError> {
+    let value: toml::Value = toml::from_str(text).expect("TOML text");
+    read(value)
+}
+
 #[test]
 fn json_round_trips_byte_for_byte_and_writes_no_derived_field() {
     let spec = rich();
     let json = serde_json::to_string(&spec).unwrap();
-    let back: DynamicsSpec = serde_json::from_str(&json).unwrap();
+    let back = from_json(&json).unwrap();
     assert_eq!(back, spec);
     assert_eq!(serde_json::to_string(&back).unwrap(), json, "byte for byte");
     for derived in ["currency", "\"class\"", "metric", "\"reading\""] {
@@ -123,10 +136,9 @@ fn json_round_trips_byte_for_byte_and_writes_no_derived_field() {
             "{derived} is derived, never written"
         );
     }
-    // Through a JSON value, as the scene's facet carries it.
-    let value = serde_json::to_value(&spec).unwrap();
-    let back: DynamicsSpec = serde_json::from_value(value.clone()).unwrap();
-    assert_eq!(serde_json::to_value(&back).unwrap(), value);
+    // A reader that tracks no path reads the same spec.
+    let plain: DynamicsSpec = serde_json::from_str(&json).unwrap();
+    assert_eq!(plain, spec);
 }
 
 #[test]
@@ -134,14 +146,12 @@ fn toml_round_trips_a_tree_four_deep() {
     let spec = rich();
     assert!(spec.depth() >= 4, "schedule, grouping, mix, term");
     let text = toml::to_string(&spec).unwrap();
-    let back: DynamicsSpec = toml::from_str(&text).unwrap();
+    let back = from_toml(&text).unwrap();
     assert_eq!(back, spec, "{text}");
     assert_eq!(toml::to_string(&back).unwrap(), text, "byte for byte");
 }
 
-#[test]
-fn a_hand_written_toml_recipe_reads_with_defaults() {
-    let recipe = r#"
+const RECIPE: &str = r#"
 version = 1
 
 [root]
@@ -155,7 +165,10 @@ node = "raw"
 target = [0.0, 0.0]
 oscillation = [240.0, 24.0]
 "#;
-    let spec: DynamicsSpec = toml::from_str(recipe).unwrap();
+
+#[test]
+fn a_hand_written_toml_recipe_reads_with_defaults() {
+    let spec = from_toml(RECIPE).unwrap();
     assert_eq!(
         spec.seed, DEFAULT_SEED,
         "F101: a spec without one runs on LAW_SEED"
@@ -179,80 +192,139 @@ oscillation = [240.0, 24.0]
 }
 
 #[test]
-fn a_newer_spec_is_refused_and_an_older_one_stamped() {
-    let mut value = serde_json::to_value(DynamicsSpec::new(Node::preset("springs"))).unwrap();
-    value["version"] = serde_json::json!(2);
-    let err = serde_json::from_value::<DynamicsSpec>(value.clone()).unwrap_err();
+fn a_field_on_the_wrong_kind_of_node_is_refused_where_it_sits() {
+    let wrong = RECIPE.replacen(
+        "id = \"springs\"",
+        "id = \"springs\"\npartition = \"groups.site\"",
+        1,
+    );
+    let err = from_toml(&wrong).unwrap_err();
+    assert_eq!(err.path, "root", "{err}");
     assert!(
-        err.to_string()
-            .contains("dynamics spec version 2 is newer than this reader's 1"),
+        err.message
+            .contains("unknown field `partition` on a preset node"),
         "{err}"
     );
-    value["version"] = serde_json::json!(1);
-    assert!(serde_json::from_value::<DynamicsSpec>(value.clone()).is_ok());
-    value["version"] = serde_json::json!(0);
-    let older: DynamicsSpec = serde_json::from_value(value).unwrap();
-    assert_eq!(older.version, DYNAMICS_SPEC_VERSION, "stamped on read");
+    let missing = RECIPE.replacen("id = \"springs\"", "", 1);
+    let err = from_toml(&missing).unwrap_err();
+    assert_eq!(err.path, "root", "{err}");
+    assert!(
+        err.message.contains("missing field `id` on a preset node"),
+        "{err}"
+    );
 }
 
 #[test]
-fn unknown_names_are_refused_everywhere() {
+fn a_newer_spec_is_refused_for_its_version_and_an_older_one_stamped() {
+    let mut value = serde_json::to_value(DynamicsSpec::new(Node::preset("springs"))).unwrap();
+    value["version"] = serde_json::json!(2);
+    let err = read(&value).unwrap_err();
+    assert_eq!(err.path, "version");
+    assert_eq!(
+        err.to_string(),
+        "at version: dynamics spec version 2 is newer than this reader's 1"
+    );
+    // Read for its version first: a newer spec holding names this reader
+    // does not know is refused for its version, not for the names.
+    value["anneal_schedule"] = serde_json::json!({ "cooling": 0.99 });
+    assert_eq!(read(&value).unwrap_err().path, "version");
+    // A reader that tracks no path refuses it too, by the type's own check.
+    value.as_object_mut().unwrap().remove("anneal_schedule");
+    let plain = serde_json::from_value::<DynamicsSpec>(value.clone()).unwrap_err();
+    assert!(
+        plain.to_string().contains("newer than this reader's 1"),
+        "{plain}"
+    );
+    value["version"] = serde_json::json!(1);
+    assert!(read(&value).is_ok(), "the control");
+    value["version"] = serde_json::json!(0);
+    let older = read(&value).unwrap();
+    assert_eq!(older.version, DYNAMICS_SPEC_VERSION, "stamped on read");
+}
+
+/// F113: every serde refusal names its path, as derive's do.
+#[test]
+fn unknown_names_are_refused_where_they_sit() {
     let base = serde_json::to_value(rich()).unwrap();
-    let refused = |edit: &dyn Fn(&mut serde_json::Value), needle: &str| {
+    let refused = |edit: &dyn Fn(&mut serde_json::Value), needle: &str, path: &str| {
         let mut value = base.clone();
         edit(&mut value);
-        let err = serde_json::from_value::<DynamicsSpec>(value)
-            .expect_err(needle)
-            .to_string();
-        assert!(err.contains(needle), "{needle}: {err}");
+        let err = read(&value).expect_err(needle);
+        println!("refused at {}: {}", err.path, err.message);
+        assert!(err.message.contains(needle), "{needle}: {err}");
+        assert!(err.path.starts_with(path), "{path}: {err}");
     };
     // The positive control: the unedited spec reads.
-    assert!(serde_json::from_value::<DynamicsSpec>(base.clone()).is_ok());
+    assert!(read(&base).is_ok());
     refused(
         &|v| v["extra"] = serde_json::json!(1),
         "unknown field `extra`",
+        "extra",
     );
     refused(
         &|v| v["root"]["stages"][0]["node"]["colour"] = serde_json::json!("red"),
         "unknown field `colour`",
+        "root.stages[0].node",
     );
     refused(
         &|v| v["root"]["stages"][0]["stopp"] = serde_json::json!("rest"),
         "unknown field `stopp`",
+        "root.stages[0]",
     );
     refused(
         &|v| {
             v["root"]["stages"][2]["node"]["term"]["density"]["resolutoin"] = serde_json::json!(32)
         },
         "unknown field `resolutoin`",
+        "root.stages[2].node.term.density",
     );
+    // An unknown raw kind.
     refused(
         &|v| {
             let term = v["root"]["stages"][2]["node"]["term"]["density"].take();
             v["root"]["stages"][2]["node"]["term"] = serde_json::json!({ "densty": term });
         },
         "unknown variant `densty`",
+        "root.stages[2].node.term",
     );
     refused(
         &|v| v["root"]["node"] = serde_json::json!("sequence"),
         "unknown variant `sequence`",
+        "root.node",
     );
+    // An unknown role, at the target and at a stage's capture.
     refused(
         &|v| v["target"]["default_role"] = serde_json::json!("tethered"),
         "unknown variant `tethered`",
+        "target.default_role",
+    );
+    refused(
+        &|v| v["root"]["stages"][0]["capture"] = serde_json::json!("tethered"),
+        "unknown variant `tethered`",
+        "root.stages[0].capture",
     );
     refused(
         &|v| v["target"]["arrangment"] = serde_json::json!("grid"),
         "unknown field `arrangment`",
+        "target",
     );
     refused(
         &|v| v["bars"][0]["observable"] = serde_json::json!("beauty"),
         "unknown variant `beauty`",
+        "bars[0].observable",
     );
     refused(
         &|v| v["realization"] = serde_json::json!({ "anneal": {} }),
         "unknown variant `anneal`",
+        "realization",
     );
+    // TOML names the same places.
+    let mut value = base.clone();
+    value["root"]["stages"][1]["node"]["outer"]["colour"] = serde_json::json!("red");
+    let text = toml::to_string(&value).unwrap();
+    let err = from_toml(&text).unwrap_err();
+    println!("TOML refused at {}: {}", err.path, err.message);
+    assert!(err.path.starts_with("root.stages[1].node.outer"), "{err}");
 }
 
 #[test]
@@ -273,7 +345,6 @@ fn a_depth_32_chain_round_trips_through_json_text() {
             .max()
             .unwrap();
         println!("depth {depth}: JSON nesting {nesting}");
-        let back: DynamicsSpec = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, spec);
+        assert_eq!(from_json(&json).unwrap(), spec);
     }
 }

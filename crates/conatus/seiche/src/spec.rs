@@ -201,76 +201,48 @@ impl DynamicsSpec {
     }
 }
 
-/// A node of the tree (F95).
+/// A node of the tree (F95). Written tagged by `node`; read through
+/// [`NodeWire`], one plain struct, so a reader that tracks paths
+/// ([`read`]) sees inside every node (F113).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
-    serde(tag = "node", rename_all = "kebab-case", deny_unknown_fields)
+    serde(tag = "node", rename_all = "kebab-case", try_from = "NodeWire")
 )]
 pub enum Node {
     /// A catalog law or overlay by its id, as a saved scene stores it.
     Preset {
         id: String,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default = "one", skip_serializing_if = "is_one")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "is_one"))]
         weight: f64,
         /// Per-term overrides by term name (F96).
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "BTreeMap::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "BTreeMap::is_empty"))]
         terms: BTreeMap<String, f64>,
         /// Reserved for G5; refused if set (F103).
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Option::is_none")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         rung: Option<String>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Vec::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
         overlays: Vec<Node>,
     },
     /// A raw seiche term (F106).
     Raw {
         term: RawTerm,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default = "one", skip_serializing_if = "is_one")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "is_one"))]
         weight: f64,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "BTreeMap::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "BTreeMap::is_empty"))]
         terms: BTreeMap<String, f64>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Option::is_none")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         rung: Option<String>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Vec::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
         overlays: Vec<Node>,
     },
     /// Parts summed, each at its weight.
     Mix {
         parts: Vec<Node>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default = "one", skip_serializing_if = "is_one")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "is_one"))]
         weight: f64,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Vec::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
         overlays: Vec<Node>,
     },
     /// An outer node between the groups of a partition, an inner node within
@@ -280,41 +252,185 @@ pub enum Node {
         partition: String,
         outer: Box<Node>,
         inner: Box<Node>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default = "one", skip_serializing_if = "is_one")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "is_one"))]
         weight: f64,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Vec::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
         overlays: Vec<Node>,
     },
     /// Stages run in order, each to its stop.
     Schedule {
         stages: Vec<Stage>,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default = "one", skip_serializing_if = "is_one")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "is_one"))]
         weight: f64,
-        #[cfg_attr(
-            feature = "serde",
-            serde(default, skip_serializing_if = "Vec::is_empty")
-        )]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
         overlays: Vec<Node>,
     },
 }
 
 #[cfg(feature = "serde")]
-fn one() -> f64 {
-    1.0
+fn is_one(x: &f64) -> bool {
+    *x == 1.0
+}
+
+/// A node's tag, as written.
+#[cfg(feature = "serde")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum NodeTag {
+    Preset,
+    Raw,
+    Mix,
+    Grouped,
+    Schedule,
+}
+
+/// A node as written: every field any node takes, read as one struct, then
+/// checked against its tag. An internally tagged enum buffers a node before
+/// reading it, which hides everything inside from a path-tracking reader.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NodeWire {
+    node: NodeTag,
+    id: Option<String>,
+    term: Option<RawTerm>,
+    weight: Option<f64>,
+    terms: Option<BTreeMap<String, f64>>,
+    rung: Option<String>,
+    overlays: Option<Vec<Node>>,
+    parts: Option<Vec<Node>>,
+    partition: Option<String>,
+    outer: Option<Box<Node>>,
+    inner: Option<Box<Node>>,
+    stages: Option<Vec<Stage>>,
 }
 
 #[cfg(feature = "serde")]
-fn is_one(x: &f64) -> bool {
-    *x == 1.0
+impl TryFrom<NodeWire> for Node {
+    type Error = String;
+
+    fn try_from(wire: NodeWire) -> Result<Self, Self::Error> {
+        let kind = match wire.node {
+            NodeTag::Preset => "preset",
+            NodeTag::Raw => "raw",
+            NodeTag::Mix => "mix",
+            NodeTag::Grouped => "grouped",
+            NodeTag::Schedule => "schedule",
+        };
+        let present = [
+            ("id", wire.id.is_some()),
+            ("term", wire.term.is_some()),
+            ("terms", wire.terms.is_some()),
+            ("rung", wire.rung.is_some()),
+            ("parts", wire.parts.is_some()),
+            ("partition", wire.partition.is_some()),
+            ("outer", wire.outer.is_some()),
+            ("inner", wire.inner.is_some()),
+            ("stages", wire.stages.is_some()),
+        ];
+        let takes: &[&str] = match wire.node {
+            NodeTag::Preset => &["id", "terms", "rung"],
+            NodeTag::Raw => &["term", "terms", "rung"],
+            NodeTag::Mix => &["parts"],
+            NodeTag::Grouped => &["partition", "outer", "inner"],
+            NodeTag::Schedule => &["stages"],
+        };
+        if let Some((field, _)) = present
+            .iter()
+            .find(|(field, set)| *set && !takes.contains(field))
+        {
+            return Err(format!("unknown field `{field}` on a {kind} node"));
+        }
+        let missing = |field: &str| format!("missing field `{field}` on a {kind} node");
+        let weight = wire.weight.unwrap_or(1.0);
+        let overlays = wire.overlays.unwrap_or_default();
+        Ok(match wire.node {
+            NodeTag::Preset => Node::Preset {
+                id: wire.id.ok_or_else(|| missing("id"))?,
+                weight,
+                terms: wire.terms.unwrap_or_default(),
+                rung: wire.rung,
+                overlays,
+            },
+            NodeTag::Raw => Node::Raw {
+                term: wire.term.ok_or_else(|| missing("term"))?,
+                weight,
+                terms: wire.terms.unwrap_or_default(),
+                rung: wire.rung,
+                overlays,
+            },
+            NodeTag::Mix => Node::Mix {
+                parts: wire.parts.ok_or_else(|| missing("parts"))?,
+                weight,
+                overlays,
+            },
+            NodeTag::Grouped => Node::Grouped {
+                partition: wire.partition.ok_or_else(|| missing("partition"))?,
+                outer: wire.outer.ok_or_else(|| missing("outer"))?,
+                inner: wire.inner.ok_or_else(|| missing("inner"))?,
+                weight,
+                overlays,
+            },
+            NodeTag::Schedule => Node::Schedule {
+                stages: wire.stages.ok_or_else(|| missing("stages"))?,
+                weight,
+                overlays,
+            },
+        })
+    }
+}
+
+/// A spec refused while it is read, with where (F113): the path in the
+/// spec's own terms (`root.stages[2].node.term`), as [`SpecError`]'s are.
+#[cfg(feature = "serde")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpecReadError {
+    pub path: String,
+    pub message: String,
+}
+
+#[cfg(feature = "serde")]
+impl std::fmt::Display for SpecReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "at {}: {}", self.path, self.message)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl std::error::Error for SpecReadError {}
+
+/// Read a spec from `input`, naming the path of any refusal (F113). The
+/// version is read first, so a newer spec is refused for its version even
+/// where it holds names this reader does not know (F98); `input` is read
+/// twice, so it is a cheap handle (`&serde_json::Value`, a TOML table).
+#[cfg(feature = "serde")]
+pub fn read<'de, D>(input: D) -> Result<DynamicsSpec, SpecReadError>
+where
+    D: serde::Deserializer<'de> + Clone,
+{
+    #[derive(serde::Deserialize)]
+    struct Version {
+        version: u16,
+    }
+    let refused = |error: serde_path_to_error::Error<D::Error>| SpecReadError {
+        path: match error.path().to_string() {
+            root if root == "." => "the spec".to_string(),
+            path => path,
+        },
+        message: error.inner().to_string(),
+    };
+    let Version { version } = serde_path_to_error::deserialize(input.clone()).map_err(refused)?;
+    if version > DYNAMICS_SPEC_VERSION {
+        return Err(SpecReadError {
+            path: "version".into(),
+            message: SpecVersionError {
+                found: version,
+                reader: DYNAMICS_SPEC_VERSION,
+            }
+            .to_string(),
+        });
+    }
+    serde_path_to_error::deserialize(input).map_err(refused)
 }
 
 /// One stage of a schedule.

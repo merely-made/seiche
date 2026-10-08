@@ -42,6 +42,8 @@ burn-wgpu = { version = "=0.22.0", default-features = false, features = ["std", 
 # every format, JSON in a saved scene, CBOR in personal sync, TOML for a recipe
 # a person writes (dynamics grammar plan, G4a, F104).
 serde = { version = "1", features = ["derive"], optional = true }
+# Every refusal while reading a spec names its path (F113).
+serde_path_to_error = { version = "0.1", optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
@@ -63,7 +65,7 @@ gpu = ["dep:conatus", "dep:wgpu"]
 # Benchmark-only staging helper for the exact NodeExclusion law.
 gpu-bench = ["tensor-burn-wgpu"]
 # The dynamics spec as data: serde on `spec` and the types it names.
-serde = ["dep:serde"]
+serde = ["dep:serde", "dep:serde_path_to_error"]
 
 [dev-dependencies]
 uuid = "1"
