@@ -149,6 +149,7 @@ impl Simulation {
                     &mut self.colliders,
                     &mut self.impulse_joints,
                     &mut self.multibody_joints,
+                    &mut self.soft_bodies,
                     /* remove_attached_colliders */ true,
                 );
             }

@@ -94,7 +94,7 @@ impl Simulation {
                 // `collider1` toward `collider2`; orient it toward the
                 // node so "the supporter pushes up" is one comparison.
                 let ours_is_first = pair.collider1 == ch;
-                let holds_up = pair.manifolds.iter().any(|m| {
+                let holds_up = pair.manifolds().iter().any(|m| {
                     let toward_node = if ours_is_first {
                         -m.data.normal
                     } else {
