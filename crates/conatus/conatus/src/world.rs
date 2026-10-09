@@ -15,6 +15,7 @@ use crate::{
     ColliderId, ColliderShape, SpatialFilter, Transform, Velocity, VoxelChange, VoxelEdit,
 };
 
+mod queries;
 mod rapier;
 
 use rapier::RapierBodyBackend;
@@ -175,6 +176,8 @@ pub struct BodyWorld {
     pending_voxel_changes: Vec<VoxelChange>,
     active_interactions: BTreeSet<InteractionKey>,
     pending_events: Vec<InteractionEvent>,
+    /// Bodies whose colliders queries may not see yet (ruling 352).
+    query_stale: BTreeSet<BodyId>,
 }
 
 impl Default for BodyWorld {
@@ -203,6 +206,7 @@ impl BodyWorld {
             pending_voxel_changes: Vec::new(),
             active_interactions: BTreeSet::new(),
             pending_events: Vec::new(),
+            query_stale: BTreeSet::new(),
         })
     }
 
@@ -250,6 +254,7 @@ impl BodyWorld {
         slot.occupied = true;
         slot.collider_revisions = vec![revision; self.backend.collider_count(id)];
         self.dirty_bodies.insert(id);
+        self.query_stale.insert(id);
         Ok(id)
     }
 
@@ -274,6 +279,7 @@ impl BodyWorld {
         slot.generation = slot.generation.wrapping_add(1).max(1);
         self.free.push(id.slot());
         self.dirty_bodies.remove(&id);
+        self.query_stale.remove(&id);
         self.pending_removed.push(id);
         self.bump_revision();
         Ok(state)
@@ -320,6 +326,7 @@ impl BodyWorld {
         self.ensure_body(id)?;
         self.backend.set_transform(id, transform, wake)?;
         self.dirty_bodies.insert(id);
+        self.query_stale.insert(id);
         self.bump_revision();
         Ok(())
     }
@@ -356,6 +363,7 @@ impl BodyWorld {
         self.ensure_body(id)?;
         self.backend.set_kind(id, kind)?;
         self.dirty_bodies.insert(id);
+        self.query_stale.insert(id);
         self.bump_revision();
         Ok(())
     }
@@ -450,6 +458,7 @@ impl BodyWorld {
         let (slot, index) = self.collider_slot_mut(collider)?;
         slot.collider_revisions[index] = revision;
         self.dirty_bodies.insert(collider.body());
+        self.query_stale.insert(collider.body());
         let changed = effective.len();
         self.pending_voxel_changes.push(VoxelChange {
             collider,
@@ -524,6 +533,7 @@ impl BodyWorld {
             .filter_map(|id| self.state(id).map(|state| (id, state.transform)))
             .collect();
         self.backend.step(dt);
+        self.query_stale.clear();
         self.tick = self.tick.saturating_add(1);
         let revision = self.bump_revision();
 

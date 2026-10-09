@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+mod queries;
+
 use rapier3d::control::{
     CharacterAutostep as RapierCharacterAutostep, CharacterLength, KinematicCharacterController,
 };
