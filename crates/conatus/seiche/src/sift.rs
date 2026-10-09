@@ -155,8 +155,9 @@ impl Simulation {
     }
 
     /// Re-mask one node body's collider(s) from its stored kinds and the
-    /// given tangibility. The one place node groups are computed, so the
-    /// two axes cannot drift apart. (Physics scenes P2 + tactile T2.)
+    /// given tangibility, and wake the body. The one place node groups are
+    /// computed, so the two axes cannot drift apart. (Physics scenes P2 +
+    /// tactile T2.)
     pub(crate) fn remask_node(&mut self, node: NodeKey, tangible: bool) {
         let kinds = self.node_kinds(node);
         let Some(&handle) = self.bodies_by_node.get(&node) else {
@@ -172,6 +173,12 @@ impl Simulation {
             if let Some(collider) = self.colliders.get_mut(collider) {
                 collider.set_collision_groups(groups);
             }
+        }
+        // A sleeping body ignores a new filter until something wakes it, and
+        // rapier 0.36 sleeps a still body after half a second, so a remask
+        // wakes it and the change collides at once (F175).
+        if let Some(body) = self.bodies.get_mut(handle) {
+            body.wake_up(true);
         }
     }
 }
