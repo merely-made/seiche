@@ -18,6 +18,7 @@ use crate::{
 mod queries;
 mod rapier;
 
+pub use queries::{VoxelBox, VoxelCells};
 use rapier::RapierBodyBackend;
 
 #[derive(Clone, Debug, PartialEq)]
