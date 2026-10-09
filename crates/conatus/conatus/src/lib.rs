@@ -40,6 +40,6 @@ pub use nisus::{
 };
 pub use schedule::{Phase, Resources, SystemContext, SystemError};
 pub use world::{
-    BodyError, BodyWorld, Interaction, InteractionEvent, InteractionState, RayHit, StepUpdate,
-    VoxelBox, VoxelCells, VoxelEditSummary,
+    BodyError, BodyWorld, Interaction, InteractionEvent, InteractionState, RayHit, ShapeContact,
+    StepUpdate, VoxelBox, VoxelCells, VoxelEditSummary,
 };

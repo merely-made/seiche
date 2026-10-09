@@ -10,14 +10,26 @@
 use serde::{Deserialize, Serialize};
 
 use super::rapier::VoxelCellWalk;
-use super::{BodyError, BodyWorld, finite3};
-use crate::{ColliderId, SpatialFilter};
+use super::{BodyError, BodyWorld, finite3, validate_shape, validate_transform};
+use crate::{ColliderId, ColliderShape, SpatialFilter, Transform};
 
 /// A half-open box of voxel-grid cells: `min` inclusive, `max` exclusive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VoxelBox {
     pub min: [i32; 3],
     pub max: [i32; 3],
+}
+
+/// One contact between a query shape and a world collider: `point` lies on
+/// the world collider's surface in world space, `normal` points out of that
+/// collider toward the query shape, and `distance` is negative when the two
+/// overlap.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShapeContact {
+    pub collider: ColliderId,
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
+    pub distance: f32,
 }
 
 /// The occupied cells of one voxel collider, in canonical order: 8-cell
@@ -80,5 +92,29 @@ impl BodyWorld {
         }
         self.collider_slot(collider)?;
         self.backend.voxel_cells(collider, within).map(VoxelCells)
+    }
+
+    /// Every contact between `shape` at `transform` and the world's
+    /// colliders whose distance is at most `prediction`, as a flat list
+    /// sorted by collider, then distance. Every `ColliderShape` is accepted,
+    /// voxel grids included.
+    pub fn contacts(
+        &self,
+        transform: Transform,
+        shape: &ColliderShape,
+        prediction: f32,
+        filter: SpatialFilter,
+    ) -> Result<Vec<ShapeContact>, BodyError> {
+        validate_transform(transform).map_err(BodyError::InvalidQuery)?;
+        validate_shape(shape).map_err(BodyError::InvalidQuery)?;
+        if !prediction.is_finite() || prediction < 0.0 {
+            return Err(BodyError::InvalidQuery(
+                "contact prediction must be finite and non-negative",
+            ));
+        }
+        if !filter.include_sensors && !filter.include_solids {
+            return Ok(Vec::new());
+        }
+        self.backend.contacts(transform, shape, prediction, filter)
     }
 }
