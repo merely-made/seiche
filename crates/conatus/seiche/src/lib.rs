@@ -196,6 +196,8 @@ pub use scene_spec::{
 /// The node-body axis: a node's collider **shape** ([`NodeCollider`]) and physical **material**
 /// ([`NodeMaterial`]), and the [`Simulation`] methods that re-apply each to live bodies. (Node-rep.)
 mod node_body;
+mod obstacles;
+pub use obstacles::StaticObstacle;
 pub use node_body::{NodeCollider, NodeMaterial};
 
 /// The **sieve**: collision predicates as data — nodes carry [`Kinds`], a sieve scene body
@@ -462,6 +464,7 @@ pub struct Simulation {
     soft_bodies: SoftBodySet,
     ccd_solver: CCDSolver,
     bodies_by_node: HashMap<NodeKey, RigidBodyHandle>,
+    static_obstacles: Vec<RigidBodyHandle>,
     edges: Vec<(NodeKey, NodeKey)>,
     forces: Vec<Box<dyn Force>>,
     /// Field couplings as a separately-replaceable force list (built-in layout
@@ -560,6 +563,7 @@ impl Simulation {
             soft_bodies: SoftBodySet::new(),
             ccd_solver: CCDSolver::new(),
             bodies_by_node: HashMap::new(),
+            static_obstacles: Vec::new(),
             edges: Vec::new(),
             forces: Vec::new(),
             coupling_forces: Vec::new(),

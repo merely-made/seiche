@@ -130,6 +130,8 @@ pub enum PhysicsCommand {
     LoadScene(SceneSpec),
     /// Remove every scene body. (Physics scenes P3.)
     ClearScene,
+    /// Replace static node-contact obstacles independently of scene bodies.
+    SetStaticObstacles(Vec<crate::StaticObstacle>),
     /// Load a liquid pool: PBF params, basin, and a `cols × rows` spawn block at `spacing` from
     /// `origin`. (Physics scenes P4c.)
     LoadFluid {
@@ -586,6 +588,17 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::LoadScene(spec));
+            },
+        }
+    }
+
+    /// Replace static node-contact obstacles (inline or on the physics actor).
+    pub fn set_static_obstacles(&mut self, obstacles: Vec<crate::StaticObstacle>) {
+        match self {
+            Physics::Inline(p) => p.sim.set_static_obstacles(obstacles),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetStaticObstacles(obstacles));
             },
         }
     }

@@ -179,6 +179,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
         PhysicsCommand::SetNodesTangible(tangible) => sim.set_nodes_tangible(tangible),
         PhysicsCommand::LoadScene(spec) => sim.load_scene(&spec),
         PhysicsCommand::ClearScene => sim.clear_scene(),
+        PhysicsCommand::SetStaticObstacles(obstacles) => sim.set_static_obstacles(obstacles),
         PhysicsCommand::LoadFluid {
             params,
             basin,
