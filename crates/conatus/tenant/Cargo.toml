@@ -1,0 +1,19 @@
+[package]
+name = "tenant"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.92.0"
+license.workspace = true
+description = "The lit body tenant: rigid and glTF bodies rasterised on the host's device into the host's targets, lit by the stack's light block and depth-joined with a tracer."
+repository = "https://github.com/merely-made/mere"
+keywords = ["game-engine", "rendering", "wgpu", "gltf", "lighting"]
+categories = ["game-engines", "rendering"]
+
+[dependencies]
+# The reshaped kiss3d (wing rulings 471, 606, 735): branch `mark-ik/tenant`
+# over upstream v0.47.0. Never named by games; this crate hides its types.
+kiss3d = { git = "https://github.com/mark-ik/kiss3d.git", rev = "c362cd5855c01a525d1091589a0e38135007692f" }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+pollster = "0.4"

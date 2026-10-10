@@ -12,6 +12,7 @@ workspace.
 | [`conatus`](conatus) | Host-neutral 3D body, collision, query, and fixed-step runtime. Its opt-in `resident` module owns `ResidentChunk`, CubeCL allocation, and the device-resident spatial lane. | nisus, rapier3d, serde, optional burn + wgpu + cubecl |
 | [`nisus`](nisus) | Generic revisioned voxel chunk and edit mechanics — the *nisus formativus*, the striving by which the world's matter takes and re-takes shape; consumed by Mesocosm's `GroundVoxelProfile` as the disposable view beside its record. Renamed from `conatus-voxel` and claimed on crates.io 2026-08-28. | serde |
 | [`modulus`](modulus) | Product-neutral sparse-brick presentation ABI: deterministic `BrickMap`, `BrickTraceSpace`, the camera-neutral `BRICK_DDA_WGSL`, and a capacity-fixed retargeting mode. Camera, appearance, and composition stay in product lenses. | bytemuck |
+| [`tenant`](tenant) | The lit body tenant (working name): rigid palette meshes and glTF bodies drawn on the host's device into the host's target and encoder, lit by the stack's light block, depth-joined with a tracer; exports the shadow atlas, light buffer and depth. kiss3d, reshaped in a mark-ik fork, sits beneath and never shows. | kiss3d (fork, by rev), wgpu |
 
 `modulus` is the sixth member, landed from the `codex/conatus-brick-lift`
 branch on 2026-09-02. Renamed from `conatus-brick` and claimed on crates.io
