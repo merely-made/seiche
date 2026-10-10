@@ -165,6 +165,8 @@ pub use anchor_force::{AnchorSpring, DEFAULT_ANCHOR_SLACK, DEFAULT_ANCHOR_STIFFN
 /// scope, and the axis locks an encoded axis takes. (Dynamics grammar plan, G7.)
 pub mod roles;
 pub use roles::{Axes, Role, RoleTable};
+pub mod settle;
+pub use settle::{DynamicsRunner, SettleEnd, SettleError, SettleReport, settle};
 
 /// Position-Based Fluids (PBF): our own small SPH liquid for the orrery (salva lags rapier badly,
 /// so we roll our own). The solver lives here; its seam onto the rigid world (loading + the two-way
