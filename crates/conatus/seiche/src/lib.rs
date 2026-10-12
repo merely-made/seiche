@@ -148,7 +148,7 @@ pub use barnes_hut::{BarnesHutConfig, BarnesHutRepulsion, repulsion_forces};
 /// The aether→seiche seam: a [`numen::Coupling`] compiled to a
 /// [`Force`] (the general, scriptable path the built-in forces specialize).
 pub mod coupling_force;
-pub use coupling_force::CouplingForce;
+pub use coupling_force::{CouplingEffect, CouplingEvaluation, CouplingForce, CouplingInertReason};
 
 /// The pairwise **affinity** force: a weighted, attract-only spring over a
 /// `(a, b, weight)` signal that clusters structurally-similar nodes ("cluster by

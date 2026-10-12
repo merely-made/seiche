@@ -51,6 +51,42 @@ pub struct CouplingForce {
     registry: FieldRegistry,
 }
 
+/// One response's proposed write. This is not an aggregate force or proof that
+/// a controller applied it. Execution consumes the same value after resolving
+/// the body; a read-only caller may evaluate its own supplied point instead.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CouplingEffect {
+    AddForce([f32; 2]),
+    ScaleVelocity(f32),
+    SetVelocity([f32; 2]),
+    Displace([f32; 2]),
+    Inert(CouplingInertReason),
+}
+
+/// Why this response proposes no physical write under the current executor.
+/// These are observations of existing behavior, not new admission policies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CouplingInertReason {
+    NotInResolvedTargets,
+    FieldTypeMismatch,
+    OutsidePositiveRegion,
+    NonDynamicBody,
+    UnsupportedResponse,
+}
+
+/// A report-only point evaluation. `sample_time` is the executor's configured
+/// field sampling time, including when an inert result did not sample a field.
+/// It is not wall time, a simulation tick or an event timestamp.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CouplingEvaluation {
+    pub sample_time: f32,
+    pub effect: CouplingEffect,
+}
+
+// Preserve the current field execution contract. A real clock remains an
+// owner-policy checkpoint; exposing this value must not silently advance it.
+const SAMPLE_TIME: f32 = 0.0;
+
 impl CouplingForce {
     /// From an already-resolved field definition and target set. Needs no
     /// a graph; the field must be self-contained or carry its registry via
@@ -87,6 +123,100 @@ impl CouplingForce {
         self.targets.len()
     }
 
+    /// Evaluate one response at caller-supplied body inputs without mutating a
+    /// body, invoking an applet or advancing a controller. Target membership is
+    /// the captured selector result, not membership in the field's extent.
+    ///
+    /// Field sampling remains at `0.0`. The result describes one application;
+    /// it does not sum duplicate targets, other couplings, contacts or anchored
+    /// returns. Missing `Sample` references retain numen's existing zero fallback.
+    /// The caller owns body presence, provenance and input validity; this method
+    /// does not validate finite inputs or certify that the reported write ran.
+    pub fn evaluate_at(
+        &self,
+        node: NodeKey,
+        position: [f32; 2],
+        is_dynamic: bool,
+        dt: f32,
+    ) -> CouplingEvaluation {
+        let effect = if self.targets.contains(&node) {
+            self.evaluate_target(position, is_dynamic, dt)
+        } else {
+            CouplingEffect::Inert(CouplingInertReason::NotInResolvedTargets)
+        };
+        CouplingEvaluation {
+            sample_time: SAMPLE_TIME,
+            effect,
+        }
+    }
+
+    // Execution has already resolved each target, so it avoids a membership
+    // scan per body. Keeping the original snapshot point also preserves repeated
+    // targets: advection offsets accumulate; damping repeatedly scales velocity.
+    fn evaluate_target(&self, [x, y]: [f32; 2], is_dynamic: bool, dt: f32) -> CouplingEffect {
+        use CouplingEffect::{AddForce, Displace, Inert, ScaleVelocity, SetVelocity};
+        use CouplingInertReason::{
+            FieldTypeMismatch, NonDynamicBody, OutsidePositiveRegion, UnsupportedResponse,
+        };
+        match &self.response {
+            CouplingResponse::AttractToMin | CouplingResponse::RepelFromMax => {
+                let Some(scalar) = self.scalar() else {
+                    return Inert(FieldTypeMismatch);
+                };
+                let sign = if matches!(self.response, CouplingResponse::AttractToMin) {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
+                AddForce([sign * gx * self.strength, sign * gy * self.strength])
+            },
+            CouplingResponse::ContainmentWall => {
+                let Some(scalar) = self.scalar() else {
+                    return Inert(FieldTypeMismatch);
+                };
+                let depth = eval_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
+                if depth > 0.0 {
+                    let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
+                    let force = Vector::new(gx, gy) * (self.strength * depth);
+                    AddForce([force.x, force.y])
+                } else {
+                    Inert(OutsidePositiveRegion)
+                }
+            },
+            CouplingResponse::DampenInside { factor } => {
+                let Some(scalar) = self.scalar() else {
+                    return Inert(FieldTypeMismatch);
+                };
+                if eval_scalar(scalar, &self.registry, x, y, SAMPLE_TIME) > 0.0 {
+                    // The existing response ignores coupling strength.
+                    ScaleVelocity(*factor)
+                } else {
+                    Inert(OutsidePositiveRegion)
+                }
+            },
+            CouplingResponse::AlignVelocity => {
+                let Some(field) = self.vector() else {
+                    return Inert(FieldTypeMismatch);
+                };
+                let (vx, vy) = eval_vector(field, &self.registry, x, y, SAMPLE_TIME);
+                SetVelocity([vx * self.strength, vy * self.strength])
+            },
+            CouplingResponse::FlowAdvect => {
+                let Some(field) = self.vector() else {
+                    return Inert(FieldTypeMismatch);
+                };
+                if !is_dynamic {
+                    return Inert(NonDynamicBody);
+                }
+                let (vx, vy) = eval_vector(field, &self.registry, x, y, SAMPLE_TIME);
+                let offset = Vector::new(vx, vy) * (self.strength * dt);
+                Displace([offset.x, offset.y])
+            },
+            CouplingResponse::Open { .. } => Inert(UnsupportedResponse),
+        }
+    }
+
     fn scalar(&self) -> Option<&ScalarField> {
         match &self.field {
             FieldDefinition::Scalar(s) => Some(s),
@@ -104,8 +234,8 @@ impl CouplingForce {
 
 impl Force for CouplingForce {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
-        // Snapshot (handle, x, y) for each target immutably before mutating
-        // forces / velocities (same discipline the built-in forces follow).
+        // Snapshot field sample points before any writes, as the original
+        // executor did. Duplicate target applications stay in their input order.
         let mut samples: Vec<(RigidBodyHandle, f32, f32)> = Vec::with_capacity(self.targets.len());
         for &node in &self.targets {
             if let Some(&handle) = ctx.bodies_by_node.get(&node) {
@@ -115,82 +245,24 @@ impl Force for CouplingForce {
                 }
             }
         }
-
-        match &self.response {
-            // Gradient descent / ascent on a scalar potential. Attract follows
-            // -grad (toward minima); repel follows +grad (toward maxima).
-            CouplingResponse::AttractToMin | CouplingResponse::RepelFromMax => {
-                let Some(scalar) = self.scalar() else { return };
-                let sign = if matches!(self.response, CouplingResponse::AttractToMin) {
-                    -1.0
-                } else {
-                    1.0
-                };
-                for (handle, x, y) in samples {
-                    let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, 0.0);
-                    if let Some(body) = ctx.bodies.get_mut(handle) {
-                        let f = Vector::new(sign * gx * self.strength, sign * gy * self.strength);
-                        body.add_force(f, true);
-                    }
-                }
-            },
-            // Hard pushout wherever the scalar is positive ("inside"): push along
-            // +grad scaled by how far inside the body is.
-            CouplingResponse::ContainmentWall => {
-                let Some(scalar) = self.scalar() else { return };
-                for (handle, x, y) in samples {
-                    let depth = eval_scalar(scalar, &self.registry, x, y, 0.0);
-                    if depth > 0.0 {
-                        let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, 0.0);
-                        if let Some(body) = ctx.bodies.get_mut(handle) {
-                            let f = Vector::new(gx, gy) * (self.strength * depth);
-                            body.add_force(f, true);
-                        }
-                    }
-                }
-            },
-            // Multiplicative velocity damping while inside a positive region.
-            CouplingResponse::DampenInside { factor } => {
-                let Some(scalar) = self.scalar() else { return };
-                for (handle, x, y) in samples {
-                    if eval_scalar(scalar, &self.registry, x, y, 0.0) > 0.0 {
-                        if let Some(body) = ctx.bodies.get_mut(handle) {
-                            let v = body.linvel();
-                            body.set_linvel(v * *factor, true);
-                        }
-                    }
-                }
-            },
-            // Set velocity to the vector field at this position (scaled).
-            CouplingResponse::AlignVelocity => {
-                let Some(field) = self.vector() else { return };
-                for (handle, x, y) in samples {
-                    let (vx, vy) = eval_vector(field, &self.registry, x, y, 0.0);
-                    if let Some(body) = ctx.bodies.get_mut(handle) {
-                        body.set_linvel(Vector::new(vx * self.strength, vy * self.strength), true);
-                    }
-                }
-            },
-            // Advect: nudge position along the field this step (pos += dt * field).
-            CouplingResponse::FlowAdvect => {
-                let Some(field) = self.vector() else { return };
-                for (handle, x, y) in samples {
-                    let (vx, vy) = eval_vector(field, &self.registry, x, y, 0.0);
-                    // A pinned (kinematic) body belongs to the drag; writing
-                    // its translation would overwrite its kinematic target.
-                    if let Some(body) = ctx.bodies.get_mut(handle)
-                        && body.is_dynamic()
-                    {
-                        let t = body.translation();
-                        let next = t + Vector::new(vx, vy) * (self.strength * dt);
+        for (handle, x, y) in samples {
+            if let Some(body) = ctx.bodies.get_mut(handle) {
+                match self.evaluate_target([x, y], body.is_dynamic(), dt) {
+                    CouplingEffect::AddForce([fx, fy]) => body.add_force(Vector::new(fx, fy), true),
+                    CouplingEffect::ScaleVelocity(factor) => {
+                        let velocity = body.linvel();
+                        body.set_linvel(velocity * factor, true);
+                    },
+                    CouplingEffect::SetVelocity([vx, vy]) => {
+                        body.set_linvel(Vector::new(vx, vy), true)
+                    },
+                    CouplingEffect::Displace([dx, dy]) => {
+                        let next = body.translation() + Vector::new(dx, dy);
                         body.set_translation(next, true);
-                    }
+                    },
+                    CouplingEffect::Inert(_) => {},
                 }
-            },
-            // Open tail (visual / navigational / selection / semantic / trigger):
-            // not a force response, so the integrator leaves these bodies untouched.
-            // The consumer that owns the family acts on them elsewhere.
-            CouplingResponse::Open { .. } => {},
+            }
         }
     }
 }
@@ -256,6 +328,10 @@ impl Declared for CouplingForce {
 // `build::coupling_force_from_graph`, and its tests live there. What stays here
 // is the kernel-free physics of a resolved [`CouplingForce`].
 #[cfg(test)]
+#[path = "coupling_effect_tests.rs"]
+mod effect_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Boundary, NodeKey, Simulation};
@@ -285,7 +361,7 @@ mod tests {
 
     /// `½(x² + y²)` — gradient `(x, y)`, the potential whose `AttractToMin`
     /// coupling reproduces `Boundary`.
-    fn paraboloid() -> ScalarField {
+    pub(super) fn paraboloid() -> ScalarField {
         ScalarField::Scale(
             Box::new(ScalarField::Add(
                 Box::new(ScalarField::Mul(
