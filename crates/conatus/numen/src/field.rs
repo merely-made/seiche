@@ -165,10 +165,42 @@ fn polygon_contains(points: &[(f32, f32)], x: f32, y: f32) -> bool {
     if points.len() < 3 {
         return false;
     }
+    if !x.is_finite()
+        || !y.is_finite()
+        || points.iter().any(|(x, y)| !x.is_finite() || !y.is_finite())
+    {
+        return false;
+    }
+    // Preserve empty/collinear polygon semantics; an inclusive edge must not
+    // turn a degenerate polygon into a path-shaped field.
+    let a = points[0];
+    let Some(b) = points.iter().find(|b| **b != a) else {
+        return false;
+    };
+    let collinear = points.iter().all(|p| {
+        (f64::from(b.0) - f64::from(a.0)) * (f64::from(p.1) - f64::from(a.1))
+            == (f64::from(b.1) - f64::from(a.1)) * (f64::from(p.0) - f64::from(a.0))
+    });
+    if collinear {
+        return false;
+    }
+    let (x, y) = (f64::from(x), f64::from(y));
     let mut inside = false;
     for (index, a) in points.iter().enumerate() {
         let b = points[(index + 1) % points.len()];
-        if (a.1 > y) != (b.1 > y) && x < a.0 + (b.0 - a.0) * (y - a.1) / (b.1 - a.1) {
+        let (ax, ay, bx, by) = (
+            f64::from(a.0),
+            f64::from(a.1),
+            f64::from(b.0),
+            f64::from(b.1),
+        );
+        // Inclusive boundary, without an unruled epsilon/hysteresis policy.
+        let cross = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+        if cross == 0.0 && x >= ax.min(bx) && x <= ax.max(bx) && y >= ay.min(by) && y <= ay.max(by)
+        {
+            return true;
+        }
+        if (ay > y) != (by > y) && x < ax + (bx - ax) * (y - ay) / (by - ay) {
             inside = !inside;
         }
     }
@@ -321,5 +353,45 @@ mod tests {
         let fid = FieldId::from_uuid(sample_uuid(4));
         let cid = CouplingId::from_uuid(sample_uuid(4));
         assert_eq!(fid.as_uuid(), cid.as_uuid());
+    }
+}
+
+#[cfg(test)]
+mod inclusive_boundary_tests {
+    use super::*;
+    #[test]
+    fn polygon_reference_points_include_every_edge_and_vertex_in_both_windings() {
+        let mut points = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        for _ in 0..2 {
+            let extent = FieldExtent::Polygon {
+                points: points.clone(),
+            };
+            for (x, y) in [
+                (0., 0.),
+                (10., 0.),
+                (10., 10.),
+                (0., 10.),
+                (0., 5.),
+                (10., 5.),
+                (5., 0.),
+                (5., 10.),
+                (5., 5.),
+            ] {
+                assert_eq!(extent.contains(x, y), Some(true), "({x}, {y})");
+            }
+            assert_eq!(
+                extent.contains(f32::from_bits(10.0_f32.to_bits() + 1), 5.0),
+                Some(false)
+            );
+            assert_eq!(extent.contains(f32::NAN, 5.0), Some(false));
+            points.reverse();
+            assert_eq!(
+                FieldExtent::Polygon {
+                    points: vec![(0.0, 0.0), (5.0, 0.0), (10.0, 0.0)]
+                }
+                .contains(5.0, 0.0),
+                Some(false)
+            );
+        }
     }
 }

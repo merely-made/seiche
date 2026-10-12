@@ -11,6 +11,7 @@
 
 use rapier2d::prelude::*;
 
+use crate::Force;
 use crate::{SceneField, Simulation};
 
 impl Simulation {
@@ -29,6 +30,8 @@ impl Simulation {
             || self.scene_field.is_some()
             || !self.emitters.is_empty()
             || self.forces.iter().any(|force| force.wants_tick())
+            || (!self.field_clock.paused
+                && self.coupling_forces.iter().any(|force| force.wants_tick()))
     }
 
     /// Apply the scene force-field (if any) to every dynamic scene body — a whirlpool's tangential

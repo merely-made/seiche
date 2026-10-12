@@ -7,7 +7,7 @@
 //! Bounded observations of the live coupling slot, before integration.
 use std::{num::NonZeroUsize, sync::Arc};
 
-use numen::{CouplingId, CouplingResponse, FieldDefinition, FieldId, FieldRegistry};
+use numen::{CouplingId, CouplingResponse, FieldDefinition, FieldExtent, FieldId, FieldRegistry};
 use rapier2d::prelude::*;
 
 use crate::{CouplingEffect, CouplingEvaluation, CouplingForce, ForceContext, NodeKey, Simulation};
@@ -42,7 +42,7 @@ pub struct CouplingSource {
 /// Stable identity supplied by the body owner. `member` names the owner member,
 /// not necessarily a content resource. An occurrence is only claimed when the
 /// adapter has one; graph-node bodies must not invent occurrence identities.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CouplingTargetIdentity {
     pub member: u128,
     pub occurrence: Option<u128>,
@@ -56,8 +56,12 @@ pub struct CouplingBinding {
     pub response: CouplingResponse,
     pub strength: f32,
     pub field: FieldDefinition,
+    pub extent: FieldExtent,
+    /// Syntactic Time dependency through the captured registry.
+    pub animated: bool,
     pub registry: FieldRegistry,
     pub targets: Vec<NodeKey>,
+    pub selector: Option<numen::NodeSelector>,
     pub source: Option<CouplingSource>,
     pub target_identities: Vec<Option<CouplingTargetIdentity>>,
 }
@@ -116,11 +120,12 @@ pub struct CouplingTraceRecord {
 /// The most recent valid tick only. There is no accumulating history. The
 /// caller chooses the row cap; `omitted` discloses truncation without skipping
 /// physical work. Generic boxed forces and post-integration contacts are outside
-/// this trace. Sampling time is still the executor's existing zero clock.
+/// this trace. Field samples use the accepted simulation clock.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CouplingTrace {
     pub session: CouplingTraceSession,
     pub step: u64,
+    pub clock: crate::FieldClock,
     pub dt: f32,
     pub binding_generation: u64,
     pub records: Vec<CouplingTraceRecord>,
@@ -129,7 +134,7 @@ pub struct CouplingTrace {
 }
 
 impl CouplingTrace {
-    fn has_room(&mut self) -> bool {
+    pub(crate) fn has_room(&mut self) -> bool {
         if self.records.len() < self.limit.get() {
             true
         } else {
@@ -161,23 +166,9 @@ impl CouplingForce {
         dt: f32,
         coupling_index: usize,
         trace: &mut CouplingTrace,
+        samples: &[(Option<RigidBodyHandle>, Option<[f32; 2]>)],
     ) {
-        // Preserve the original executor's per-coupling sample snapshot. Missing
-        // bodies also keep their input slot so the trace explains skipped work.
-        let samples: Vec<_> = self
-            .binding
-            .targets
-            .iter()
-            .map(|node| {
-                ctx.bodies_by_node.get(node).and_then(|&handle| {
-                    ctx.bodies.get(handle).map(|body| {
-                        let p = body.translation();
-                        (handle, [p.x, p.y])
-                    })
-                })
-            })
-            .collect();
-        for (target_index, sample) in samples.into_iter().enumerate() {
+        for (target_index, sample) in samples.iter().copied().enumerate() {
             let capture = trace.has_room();
             let node = self.binding.targets[target_index];
             let mut record = capture.then(|| CouplingTraceRecord {
@@ -185,19 +176,24 @@ impl CouplingForce {
                 coupling_index,
                 target_index,
                 node,
-                sample_position: sample.map(|(_, p)| p),
+                sample_position: sample.1,
                 evaluation: None,
                 applied: CouplingAppliedEffect::MissingBody,
             });
-            if let Some((handle, point)) = sample
+            if let (Some(handle), Some(point)) = sample
                 && let Some(body) = ctx.bodies.get_mut(handle)
             {
-                let effect = self.evaluate_target(point, body.is_dynamic(), dt);
+                let effect = self.evaluate_target(
+                    point,
+                    body.is_dynamic(),
+                    dt,
+                    ctx.field_clock.sample_time(),
+                );
                 let before = capture.then(|| CouplingBodyState::read(body));
                 Self::write_effect(body, effect);
                 if let Some(record) = &mut record {
                     record.evaluation = Some(CouplingEvaluation {
-                        sample_time: crate::coupling_force::SAMPLE_TIME,
+                        sample_time: ctx.field_clock.sample_time(),
                         effect,
                     });
                     record.applied = if matches!(effect, CouplingEffect::Inert(_)) {

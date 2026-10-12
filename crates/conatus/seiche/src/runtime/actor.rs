@@ -48,6 +48,10 @@ pub(super) fn run(
     commands: Receiver<PhysicsCommand>,
     out: Emitter<PhysicsUpdate>,
 ) {
+    if state.halted {
+        sim.set_field_clock_paused(true);
+    }
+    let membership_mailbox = super::membership_delivery::MembershipMailbox::default();
     let trace_mailbox = super::coupling_trace_delivery::TraceMailbox::default();
     let mut generation: u64 = 0;
     let mut last_interval: Option<std::time::Instant> = None;
@@ -110,6 +114,9 @@ pub(super) fn run(
             let mut snapshot = sim.snapshot(generation);
             speed::draw(&mut state.pace, &mut snapshot, settling);
             out.emit(PhysicsUpdate {
+                field_clock: sim.field_clock(),
+                coupling_membership: membership_mailbox
+                    .publish(generation, sim.coupling_membership()),
                 coupling_trace: trace_mailbox.publish(generation, sim.coupling_trace()),
                 snapshot,
                 settling,
@@ -136,6 +143,11 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
             sim.seed_positions(positions);
             state.pace.forget();
         },
+        PhysicsCommand::ResetFieldRuntime(positions) => {
+            sim.reset_field_runtime(positions);
+            state.pace.forget();
+        },
+        PhysicsCommand::SetCouplingEntryHandler(handler) => sim.set_coupling_entry_handler(handler),
         PhysicsCommand::Barrier(epoch) => state.command_epoch = state.command_epoch.max(epoch),
         PhysicsCommand::Pin(node, position) => sim.pin(node, position),
         PhysicsCommand::Unpin(node) => sim.unpin(node),
@@ -143,12 +155,14 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
             state.ticks_remaining = state.ticks_remaining.max(n);
             if n > 0 {
                 state.halted = false;
+                sim.set_field_clock_paused(false);
             }
         },
         PhysicsCommand::Halt => {
             state.ticks_remaining = 0;
             state.dragging = false;
             state.halted = true;
+            sim.set_field_clock_paused(true);
             state.pace.forget();
             state.pace.meter.clear();
         },

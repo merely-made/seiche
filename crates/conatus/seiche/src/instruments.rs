@@ -124,6 +124,7 @@ impl Probe {
             edges: &sim.edges,
             repulsion: None,
             step: sim.steps,
+            field_clock: sim.field_clock,
         };
         force.apply(&mut ctx, 0.0);
         (0..self.len())

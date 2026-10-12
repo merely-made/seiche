@@ -64,8 +64,15 @@ pub use speed::{
 
 #[cfg(feature = "actor")]
 mod coupling_trace_delivery;
+#[cfg(feature = "actor")]
+mod membership_delivery;
+#[cfg(feature = "actor")]
+pub use membership_delivery::CouplingMembershipDelivery;
 #[cfg(all(test, feature = "actor"))]
 mod coupling_trace_tests;
+mod field_runtime;
+#[cfg(all(test, feature = "actor"))]
+mod field_runtime_tests;
 #[cfg(test)]
 mod pause_tests;
 #[cfg(feature = "actor")]
@@ -82,6 +89,8 @@ pub enum PhysicsCommand {
     SyncEdges(Vec<(NodeKey, NodeKey)>),
     /// Override the positions of existing bodies (a seed / reseed).
     Seed(Vec<(NodeKey, Point2D<f32>)>),
+    ResetFieldRuntime(Vec<(NodeKey, Point2D<f32>)>),
+    SetCouplingEntryHandler(Option<crate::CouplingEntryHandler>),
     /// Acknowledge all preceding commands in subsequent snapshots. The host
     /// uses this epoch to reject layouts produced before its latest reseed.
     Barrier(u64),
@@ -168,6 +177,9 @@ pub enum PhysicsCommand {
 /// One layout the actor produced: the positions plus whether it is still
 /// settling (so the host knows to keep requesting frames).
 pub struct PhysicsUpdate {
+    pub field_clock: crate::FieldClock,
+    #[cfg(feature = "actor")]
+    pub coupling_membership: Option<CouplingMembershipDelivery>,
     #[cfg(feature = "actor")]
     pub coupling_trace: Option<CouplingTraceDelivery>,
     pub snapshot: LayoutSnapshot,
@@ -191,6 +203,8 @@ pub struct InlinePhysics {
 /// settling flag the host saw.
 #[cfg(feature = "actor")]
 pub struct ActorPhysics {
+    field_clock: crate::FieldClock,
+    coupling_membership: Option<crate::CouplingMembershipFrame>,
     coupling_trace: Option<crate::CouplingTrace>,
     handle: ActorHandle<PhysicsCommand>,
     updates: Receiver<PhysicsUpdate>,
@@ -285,11 +299,15 @@ impl Physics {
             ),
         };
         let coupling_trace = sim.coupling_trace().cloned();
+        let field_clock = sim.field_clock();
+        let coupling_membership = sim.coupling_membership().cloned();
         let (handle, updates) = spawn(wake, move |commands, out| {
             run(sim, state, commands, out);
         });
         *self = Physics::Actor(ActorPhysics {
             coupling_trace,
+            field_clock,
+            coupling_membership,
             handle,
             updates,
             settling,
@@ -408,6 +426,7 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.coupling_trace = None;
+                p.coupling_membership = None;
                 p.handle.command(PhysicsCommand::SetCouplingForces(forces));
                 p.barrier();
             },
@@ -754,10 +773,14 @@ impl Physics {
                 p.ticks_remaining = p.ticks_remaining.max(ticks);
                 if ticks > 0 {
                     p.halted = false;
+                    p.sim.set_field_clock_paused(false);
                 }
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
+                if ticks > 0 {
+                    p.field_clock.paused = false;
+                }
                 p.handle.command(PhysicsCommand::Settle(ticks));
                 if ticks > 0 {
                     p.settling = true;
@@ -774,11 +797,13 @@ impl Physics {
                 p.ticks_remaining = 0;
                 p.dragging = false;
                 p.halted = true;
+                p.sim.set_field_clock_paused(true);
                 p.pace.forget();
                 p.pace.meter.clear();
             },
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
+                p.field_clock.paused = true;
                 p.handle.command(PhysicsCommand::Halt);
                 p.barrier();
                 p.settling = false;
@@ -884,6 +909,10 @@ impl ActorPhysics {
             self.energy = update.snapshot.energy;
             self.speed = update.snapshot.speed;
             self.pace = update.pace;
+            self.field_clock = update.field_clock;
+            self.coupling_membership = update
+                .coupling_membership
+                .and_then(|delivery| delivery.read());
             self.coupling_trace = update.coupling_trace.and_then(|delivery| delivery.read());
         }
     }

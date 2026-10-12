@@ -72,6 +72,8 @@ fn stale_actor_trace_cannot_reappear_after_configuration_barrier() {
     );
     let (tx, updates) = mpsc::channel();
     let mut physics = Physics::Actor(ActorPhysics {
+        field_clock: Default::default(),
+        coupling_membership: None,
         handle,
         updates,
         coupling_trace: None,
@@ -91,6 +93,8 @@ fn stale_actor_trace_cannot_reappear_after_configuration_barrier() {
     sim.tick(TICK_DT);
     let mut view = sim.view();
     tx.send(PhysicsUpdate {
+        field_clock: sim.field_clock(),
+        coupling_membership: None,
         snapshot: sim.snapshot(1),
         coupling_trace: CouplingTraceDelivery::fixture(1, sim.coupling_trace()),
         settling: false,
@@ -103,6 +107,8 @@ fn stale_actor_trace_cannot_reappear_after_configuration_barrier() {
     physics.set_coupling_forces(vec![]);
     assert!(physics.coupling_trace().is_none());
     tx.send(PhysicsUpdate {
+        field_clock: sim.field_clock(),
+        coupling_membership: None,
         snapshot: sim.snapshot(2),
         coupling_trace: CouplingTraceDelivery::fixture(1, sim.coupling_trace()),
         settling: false,
@@ -114,6 +120,8 @@ fn stale_actor_trace_cannot_reappear_after_configuration_barrier() {
     assert!(physics.coupling_trace().is_none());
     physics.set_coupling_trace_limit(None);
     tx.send(PhysicsUpdate {
+        field_clock: sim.field_clock(),
+        coupling_membership: None,
         snapshot: sim.snapshot(3),
         coupling_trace: CouplingTraceDelivery::fixture(1, sim.coupling_trace()),
         settling: false,

@@ -232,6 +232,7 @@ impl Grouped {
                 edges: self.partition.group(g).1,
                 repulsion: None,
                 step: ctx.step,
+                field_clock: ctx.field_clock,
             };
             apply_terms(&laws.inner[g], &mut masked, dt, only);
         }
@@ -284,6 +285,7 @@ impl Grouped {
             edges: &outer_edges,
             repulsion: None,
             step: ctx.step,
+            field_clock: ctx.field_clock,
         };
         apply_terms(&laws.outer, &mut outer_ctx, dt, only);
         for (g, members) in groups.iter().enumerate() {
