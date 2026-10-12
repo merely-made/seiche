@@ -9,7 +9,7 @@ use crate::Simulation;
 use euclid::default::Point2D;
 use std::collections::BTreeMap;
 
-fn trajectory(name: &str, response: CouplingResponse, field: FieldDefinition) -> u64 {
+fn trajectory(name: &str, response: CouplingResponse, field: FieldDefinition, trace: bool) -> u64 {
     let keys = [NodeKey::new(0), NodeKey::new(1), NodeKey::new(2)];
     let mut sim = Simulation::new();
     sim.sync_nodes([
@@ -31,7 +31,10 @@ fn trajectory(name: &str, response: CouplingResponse, field: FieldDefinition) ->
     } else {
         vec![keys[0], keys[1]]
     };
-    sim.add_force(CouplingForce::new(response, 0.75, targets, field));
+    sim.set_coupling_forces(vec![CouplingForce::new(response, 0.75, targets, field)]);
+    if trace {
+        sim.set_coupling_trace_limit(std::num::NonZeroUsize::new(1));
+    }
     let mut hash = 0xcbf29ce484222325_u64;
     for tick in 0..120 {
         sim.tick(if tick < 60 { 1.0 / 60.0 } else { 1.0 / 120.0 });
@@ -97,7 +100,12 @@ fn execution_trajectory_receipt() {
     ];
     let measured: BTreeMap<_, _> = fixtures
         .into_iter()
-        .map(|(name, response, field)| (name, trajectory(name, response, field)))
+        .map(|(name, response, field)| {
+            let off = trajectory(name, response.clone(), field.clone(), false);
+            let on = trajectory(name, response, field, true);
+            assert_eq!(off, on, "{name}: tracing changed execution");
+            (name, off)
+        })
         .collect();
     for (name, digest) in &measured {
         println!("coupling_trajectory {name} {digest:016x}");

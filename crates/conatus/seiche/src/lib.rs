@@ -148,7 +148,12 @@ pub use barnes_hut::{BarnesHutConfig, BarnesHutRepulsion, repulsion_forces};
 /// The aether→seiche seam: a [`numen::Coupling`] compiled to a
 /// [`Force`] (the general, scriptable path the built-in forces specialize).
 pub mod coupling_force;
+pub mod coupling_trace;
 pub use coupling_force::{CouplingEffect, CouplingEvaluation, CouplingForce, CouplingInertReason};
+pub use coupling_trace::{
+    CouplingAppliedEffect, CouplingBinding, CouplingBodyState, CouplingSource,
+    CouplingTargetIdentity, CouplingTrace, CouplingTraceRecord, CouplingTraceSession,
+};
 
 /// The pairwise **affinity** force: a weighted, attract-only spring over a
 /// `(a, b, weight)` signal that clusters structurally-similar nodes ("cluster by
@@ -474,6 +479,10 @@ pub struct Simulation {
     /// [`set_coupling_forces`](Self::set_coupling_forces). (Field regions —
     /// rebuild-on-mutation.)
     coupling_forces: Vec<CouplingForce>,
+    coupling_trace_session: CouplingTraceSession,
+    coupling_trace_limit: Option<std::num::NonZeroUsize>,
+    coupling_trace: Option<CouplingTrace>,
+    coupling_binding_generation: u64,
     /// The pairwise **affinity** force, if installed: a weighted attract-only spring that clusters
     /// structurally-similar nodes ("cluster by affinity"). Like the couplings it is a snapshot —
     /// the host rebuilds it wholesale via [`set_affinity_force`](Self::set_affinity_force) when the
@@ -567,6 +576,10 @@ impl Simulation {
             edges: Vec::new(),
             forces: Vec::new(),
             coupling_forces: Vec::new(),
+            coupling_trace_session: CouplingTraceSession::new(),
+            coupling_trace_limit: None,
+            coupling_trace: None,
+            coupling_binding_generation: 0,
             affinity_force: None,
             anchor_force: None,
             repulsion: None,
@@ -669,7 +682,12 @@ impl Simulation {
     /// new-node rebuild. Position-preserving: forces never touch body state, so
     /// swapping them leaves the layout exactly where it is. (Field regions.)
     pub fn set_coupling_forces(&mut self, forces: Vec<CouplingForce>) {
+        self.coupling_binding_generation = self
+            .coupling_binding_generation
+            .checked_add(1)
+            .expect("coupling binding generation exhausted");
         self.coupling_forces = forces;
+        self.coupling_trace = None;
     }
 
     /// Number of field-coupling forces currently applied.
@@ -826,6 +844,15 @@ impl Simulation {
         if !dt.is_finite() || dt <= 0.0 {
             return;
         }
+        self.coupling_trace = self.coupling_trace_limit.map(|limit| CouplingTrace {
+            session: self.coupling_trace_session.clone(),
+            step: self.steps,
+            dt,
+            binding_generation: self.coupling_binding_generation,
+            records: Vec::new(),
+            omitted: 0,
+            limit,
+        });
         self.parameters.dt = dt;
 
         // Emitters spawn / reap scene bodies before the step, so fresh droplets are simulated this
@@ -858,8 +885,12 @@ impl Simulation {
                 force.apply(&mut ctx, dt);
             }
             // Field couplings apply after the built-ins, in the same reset window.
-            for force in &self.coupling_forces {
-                force.apply(&mut ctx, dt);
+            for (index, force) in self.coupling_forces.iter().enumerate() {
+                if let Some(trace) = &mut self.coupling_trace {
+                    force.apply_traced(&mut ctx, dt, index, trace);
+                } else {
+                    force.apply(&mut ctx, dt);
+                }
             }
             // The affinity force (if installed) applies last, over the same context — a weighted
             // clustering pull on top of the topology springs. (Graph signals — P4.)

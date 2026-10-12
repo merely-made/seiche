@@ -48,6 +48,7 @@ pub(super) fn run(
     commands: Receiver<PhysicsCommand>,
     out: Emitter<PhysicsUpdate>,
 ) {
+    let trace_mailbox = super::coupling_trace_delivery::TraceMailbox::default();
     let mut generation: u64 = 0;
     let mut last_interval: Option<std::time::Instant> = None;
 
@@ -109,6 +110,7 @@ pub(super) fn run(
             let mut snapshot = sim.snapshot(generation);
             speed::draw(&mut state.pace, &mut snapshot, settling);
             out.emit(PhysicsUpdate {
+                coupling_trace: trace_mailbox.publish(generation, sim.coupling_trace()),
                 snapshot,
                 settling,
                 command_epoch: state.command_epoch,
@@ -161,6 +163,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
             state.pace.budget = Some(speed::actor_budget(per_frame));
         },
         PhysicsCommand::SetCouplingForces(forces) => sim.set_coupling_forces(forces),
+        PhysicsCommand::SetCouplingTraceLimit(limit) => sim.set_coupling_trace_limit(limit),
         PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),
         PhysicsCommand::SetAnchorForce(force) => sim.set_anchor_force(force),
         PhysicsCommand::SetForces(forces) => sim.set_forces(forces),

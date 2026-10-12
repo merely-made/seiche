@@ -217,6 +217,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
     );
     let (updates_tx, updates) = mpsc::channel();
     let mut physics = Physics::Actor(ActorPhysics {
+        coupling_trace: None,
         handle,
         updates,
         settling: true,
@@ -234,6 +235,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
     let mut view = LayoutView::new();
     updates_tx
         .send(PhysicsUpdate {
+            coupling_trace: None,
             snapshot: sim.snapshot(1),
             settling: false,
             command_epoch: 0,

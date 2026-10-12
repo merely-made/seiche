@@ -39,16 +39,7 @@ use crate::{
 /// A [`numen::Coupling`] compiled to a [`Force`]: evaluate the field at each
 /// target node's position and apply the response.
 pub struct CouplingForce {
-    response: CouplingResponse,
-    strength: f32,
-    /// Nodes the coupling acts on, resolved from the selector at build time.
-    targets: Vec<NodeKey>,
-    /// The field to sample. Scalar responses (attract/repel/wall/dampen) need a
-    /// scalar; flow responses (align/advect) need a vector. A mismatch is inert.
-    field: FieldDefinition,
-    /// Registry for the field's `Sample` references. Empty by default — a
-    /// self-contained field needs none, and a missing sample evaluates to zero.
-    registry: FieldRegistry,
+    pub(crate) binding: std::sync::Arc<crate::CouplingBinding>,
 }
 
 /// One response's proposed write. This is not an aggregate force or proof that
@@ -85,7 +76,7 @@ pub struct CouplingEvaluation {
 
 // Preserve the current field execution contract. A real clock remains an
 // owner-policy checkpoint; exposing this value must not silently advance it.
-const SAMPLE_TIME: f32 = 0.0;
+pub(crate) const SAMPLE_TIME: f32 = 0.0;
 
 impl CouplingForce {
     /// From an already-resolved field definition and target set. Needs no
@@ -97,19 +88,49 @@ impl CouplingForce {
         targets: impl IntoIterator<Item = NodeKey>,
         field: FieldDefinition,
     ) -> Self {
+        let targets: Vec<_> = targets.into_iter().collect();
+        let target_identities = vec![None; targets.len()];
         Self {
-            response,
-            strength,
-            targets: targets.into_iter().collect(),
-            field,
-            registry: FieldRegistry::new(),
+            binding: std::sync::Arc::new(crate::CouplingBinding {
+                response,
+                strength,
+                targets,
+                field,
+                registry: FieldRegistry::new(),
+                source: None,
+                target_identities,
+            }),
         }
     }
 
     /// Supply a registry so the field's `Sample` references resolve.
     pub fn with_registry(mut self, registry: FieldRegistry) -> Self {
-        self.registry = registry;
+        std::sync::Arc::make_mut(&mut self.binding).registry = registry;
         self
+    }
+
+    /// Capture owner IDs and optional stable identities for each target slot.
+    /// The callback runs once per slot, retaining duplicate occurrence mappings.
+    /// Seiche records these supplied identities without asserting their authority.
+    pub fn with_provenance(
+        mut self,
+        source: crate::CouplingSource,
+        mut identify: impl FnMut(usize, NodeKey) -> Option<crate::CouplingTargetIdentity>,
+    ) -> Self {
+        let binding = std::sync::Arc::make_mut(&mut self.binding);
+        binding.source = Some(source);
+        binding.target_identities = binding
+            .targets
+            .iter()
+            .enumerate()
+            .map(|(slot, &node)| identify(slot, node))
+            .collect();
+        self
+    }
+
+    /// Immutable snapshot of the exact compiled inputs, including its registry.
+    pub fn binding(&self) -> &crate::CouplingBinding {
+        &self.binding
     }
 
     // `from_coupling(coupling, &Graph)` — which resolved a coupling's field and
@@ -120,7 +141,7 @@ impl CouplingForce {
 
     /// Number of nodes this force currently acts on.
     pub fn target_count(&self) -> usize {
-        self.targets.len()
+        self.binding.targets.len()
     }
 
     /// Evaluate one response at caller-supplied body inputs without mutating a
@@ -139,7 +160,7 @@ impl CouplingForce {
         is_dynamic: bool,
         dt: f32,
     ) -> CouplingEvaluation {
-        let effect = if self.targets.contains(&node) {
+        let effect = if self.binding.targets.contains(&node) {
             self.evaluate_target(position, is_dynamic, dt)
         } else {
             CouplingEffect::Inert(CouplingInertReason::NotInResolvedTargets)
@@ -153,32 +174,40 @@ impl CouplingForce {
     // Execution has already resolved each target, so it avoids a membership
     // scan per body. Keeping the original snapshot point also preserves repeated
     // targets: advection offsets accumulate; damping repeatedly scales velocity.
-    fn evaluate_target(&self, [x, y]: [f32; 2], is_dynamic: bool, dt: f32) -> CouplingEffect {
+    pub(crate) fn evaluate_target(
+        &self,
+        [x, y]: [f32; 2],
+        is_dynamic: bool,
+        dt: f32,
+    ) -> CouplingEffect {
         use CouplingEffect::{AddForce, Displace, Inert, ScaleVelocity, SetVelocity};
         use CouplingInertReason::{
             FieldTypeMismatch, NonDynamicBody, OutsidePositiveRegion, UnsupportedResponse,
         };
-        match &self.response {
+        match &self.binding.response {
             CouplingResponse::AttractToMin | CouplingResponse::RepelFromMax => {
                 let Some(scalar) = self.scalar() else {
                     return Inert(FieldTypeMismatch);
                 };
-                let sign = if matches!(self.response, CouplingResponse::AttractToMin) {
+                let sign = if matches!(self.binding.response, CouplingResponse::AttractToMin) {
                     -1.0
                 } else {
                     1.0
                 };
-                let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
-                AddForce([sign * gx * self.strength, sign * gy * self.strength])
+                let (gx, gy) = grad_scalar(scalar, &self.binding.registry, x, y, SAMPLE_TIME);
+                AddForce([
+                    sign * gx * self.binding.strength,
+                    sign * gy * self.binding.strength,
+                ])
             },
             CouplingResponse::ContainmentWall => {
                 let Some(scalar) = self.scalar() else {
                     return Inert(FieldTypeMismatch);
                 };
-                let depth = eval_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
+                let depth = eval_scalar(scalar, &self.binding.registry, x, y, SAMPLE_TIME);
                 if depth > 0.0 {
-                    let (gx, gy) = grad_scalar(scalar, &self.registry, x, y, SAMPLE_TIME);
-                    let force = Vector::new(gx, gy) * (self.strength * depth);
+                    let (gx, gy) = grad_scalar(scalar, &self.binding.registry, x, y, SAMPLE_TIME);
+                    let force = Vector::new(gx, gy) * (self.binding.strength * depth);
                     AddForce([force.x, force.y])
                 } else {
                     Inert(OutsidePositiveRegion)
@@ -188,7 +217,7 @@ impl CouplingForce {
                 let Some(scalar) = self.scalar() else {
                     return Inert(FieldTypeMismatch);
                 };
-                if eval_scalar(scalar, &self.registry, x, y, SAMPLE_TIME) > 0.0 {
+                if eval_scalar(scalar, &self.binding.registry, x, y, SAMPLE_TIME) > 0.0 {
                     // The existing response ignores coupling strength.
                     ScaleVelocity(*factor)
                 } else {
@@ -199,8 +228,8 @@ impl CouplingForce {
                 let Some(field) = self.vector() else {
                     return Inert(FieldTypeMismatch);
                 };
-                let (vx, vy) = eval_vector(field, &self.registry, x, y, SAMPLE_TIME);
-                SetVelocity([vx * self.strength, vy * self.strength])
+                let (vx, vy) = eval_vector(field, &self.binding.registry, x, y, SAMPLE_TIME);
+                SetVelocity([vx * self.binding.strength, vy * self.binding.strength])
             },
             CouplingResponse::FlowAdvect => {
                 let Some(field) = self.vector() else {
@@ -209,8 +238,8 @@ impl CouplingForce {
                 if !is_dynamic {
                     return Inert(NonDynamicBody);
                 }
-                let (vx, vy) = eval_vector(field, &self.registry, x, y, SAMPLE_TIME);
-                let offset = Vector::new(vx, vy) * (self.strength * dt);
+                let (vx, vy) = eval_vector(field, &self.binding.registry, x, y, SAMPLE_TIME);
+                let offset = Vector::new(vx, vy) * (self.binding.strength * dt);
                 Displace([offset.x, offset.y])
             },
             CouplingResponse::Open { .. } => Inert(UnsupportedResponse),
@@ -218,16 +247,34 @@ impl CouplingForce {
     }
 
     fn scalar(&self) -> Option<&ScalarField> {
-        match &self.field {
+        match &self.binding.field {
             FieldDefinition::Scalar(s) => Some(s),
             FieldDefinition::Vector(_) => None,
         }
     }
 
     fn vector(&self) -> Option<&VectorField> {
-        match &self.field {
+        match &self.binding.field {
             FieldDefinition::Vector(v) => Some(v),
             FieldDefinition::Scalar(_) => None,
+        }
+    }
+}
+
+impl CouplingForce {
+    pub(crate) fn write_effect(body: &mut RigidBody, effect: CouplingEffect) {
+        match effect {
+            CouplingEffect::AddForce([fx, fy]) => body.add_force(Vector::new(fx, fy), true),
+            CouplingEffect::ScaleVelocity(factor) => {
+                let velocity = body.linvel();
+                body.set_linvel(velocity * factor, true);
+            },
+            CouplingEffect::SetVelocity([vx, vy]) => body.set_linvel(Vector::new(vx, vy), true),
+            CouplingEffect::Displace([dx, dy]) => {
+                let next = body.translation() + Vector::new(dx, dy);
+                body.set_translation(next, true);
+            },
+            CouplingEffect::Inert(_) => {},
         }
     }
 }
@@ -236,8 +283,9 @@ impl Force for CouplingForce {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         // Snapshot field sample points before any writes, as the original
         // executor did. Duplicate target applications stay in their input order.
-        let mut samples: Vec<(RigidBodyHandle, f32, f32)> = Vec::with_capacity(self.targets.len());
-        for &node in &self.targets {
+        let mut samples: Vec<(RigidBodyHandle, f32, f32)> =
+            Vec::with_capacity(self.binding.targets.len());
+        for &node in &self.binding.targets {
             if let Some(&handle) = ctx.bodies_by_node.get(&node) {
                 if let Some(body) = ctx.bodies.get(handle) {
                     let t = body.translation();
@@ -247,21 +295,8 @@ impl Force for CouplingForce {
         }
         for (handle, x, y) in samples {
             if let Some(body) = ctx.bodies.get_mut(handle) {
-                match self.evaluate_target([x, y], body.is_dynamic(), dt) {
-                    CouplingEffect::AddForce([fx, fy]) => body.add_force(Vector::new(fx, fy), true),
-                    CouplingEffect::ScaleVelocity(factor) => {
-                        let velocity = body.linvel();
-                        body.set_linvel(velocity * factor, true);
-                    },
-                    CouplingEffect::SetVelocity([vx, vy]) => {
-                        body.set_linvel(Vector::new(vx, vy), true)
-                    },
-                    CouplingEffect::Displace([dx, dy]) => {
-                        let next = body.translation() + Vector::new(dx, dy);
-                        body.set_translation(next, true);
-                    },
-                    CouplingEffect::Inert(_) => {},
-                }
+                let effect = self.evaluate_target([x, y], body.is_dynamic(), dt);
+                Self::write_effect(body, effect);
             }
         }
     }
@@ -281,7 +316,7 @@ impl Declared for CouplingForce {
                 Observable::Residual,
             )
         };
-        match &self.response {
+        match &self.binding.response {
             CouplingResponse::AttractToMin
             | CouplingResponse::RepelFromMax
             | CouplingResponse::ContainmentWall => vec![field(Class::E)],
@@ -298,19 +333,20 @@ impl Declared for CouplingForce {
     /// `∓s·φ` for attract and repel, `−(s/2)·φ²` inside the wall.
     fn energy(&self, _term: usize, layout: &Layout<'_>) -> Option<f64> {
         let scalar = self.scalar()?;
-        let s = f64::from(self.strength);
+        let s = f64::from(self.binding.strength);
         let at = |i: usize| {
             let p = layout.nodes[i].1;
-            f64::from(eval_scalar(scalar, &self.registry, p.x, p.y, 0.0))
+            f64::from(eval_scalar(scalar, &self.binding.registry, p.x, p.y, 0.0))
         };
         let targets: Vec<usize> = {
             let index = layout.index();
-            self.targets
+            self.binding
+                .targets
                 .iter()
                 .filter_map(|k| index.get(k).copied())
                 .collect()
         };
-        let per_node: Box<dyn Fn(f64) -> f64> = match self.response {
+        let per_node: Box<dyn Fn(f64) -> f64> = match self.binding.response {
             CouplingResponse::AttractToMin => Box::new(move |phi| s * phi),
             CouplingResponse::RepelFromMax => Box::new(move |phi| -s * phi),
             CouplingResponse::ContainmentWall => {

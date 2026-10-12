@@ -62,8 +62,14 @@ pub use speed::{
     DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
 };
 
+#[cfg(feature = "actor")]
+mod coupling_trace_delivery;
+#[cfg(all(test, feature = "actor"))]
+mod coupling_trace_tests;
 #[cfg(test)]
 mod pause_tests;
+#[cfg(feature = "actor")]
+pub use coupling_trace_delivery::CouplingTraceDelivery;
 
 /// A command the host sends to the physics actor. Mirrors the mutating surface
 /// of [`Simulation`] plus the settle/drag drivers; all payloads are `Send`
@@ -94,6 +100,8 @@ pub enum PhysicsCommand {
     /// move / resize / new node triggers), without a position-losing sim rebuild.
     /// (Field regions — rebuild-on-mutation.)
     SetCouplingForces(Vec<CouplingForce>),
+    /// Observe the latest coupling tick with a caller-chosen row cap.
+    SetCouplingTraceLimit(Option<std::num::NonZeroUsize>),
     /// Install (or clear) the pairwise affinity force — the rebuild a fresh affinity signal
     /// triggers ("cluster by affinity"). Position-preserving. (Graph signals — P4.)
     SetAffinityForce(Option<AffinitySpring>),
@@ -160,6 +168,8 @@ pub enum PhysicsCommand {
 /// One layout the actor produced: the positions plus whether it is still
 /// settling (so the host knows to keep requesting frames).
 pub struct PhysicsUpdate {
+    #[cfg(feature = "actor")]
+    pub coupling_trace: Option<CouplingTraceDelivery>,
     pub snapshot: LayoutSnapshot,
     pub settling: bool,
     pub command_epoch: u64,
@@ -181,6 +191,7 @@ pub struct InlinePhysics {
 /// settling flag the host saw.
 #[cfg(feature = "actor")]
 pub struct ActorPhysics {
+    coupling_trace: Option<crate::CouplingTrace>,
     handle: ActorHandle<PhysicsCommand>,
     updates: Receiver<PhysicsUpdate>,
     settling: bool,
@@ -273,10 +284,12 @@ impl Physics {
                 inline.pace.budget.map(|budget| budget.per_frame),
             ),
         };
+        let coupling_trace = sim.coupling_trace().cloned();
         let (handle, updates) = spawn(wake, move |commands, out| {
             run(sim, state, commands, out);
         });
         *self = Physics::Actor(ActorPhysics {
+            coupling_trace,
             handle,
             updates,
             settling,
@@ -394,8 +407,36 @@ impl Physics {
             Physics::Inline(p) => p.sim.set_coupling_forces(forces),
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
+                p.coupling_trace = None;
                 p.handle.command(PhysicsCommand::SetCouplingForces(forces));
+                p.barrier();
             },
+        }
+    }
+
+    /// Enable or disable bounded live coupling observations. Clears old evidence;
+    /// actor snapshots produced before this command are rejected by the barrier.
+    pub fn set_coupling_trace_limit(&mut self, limit: Option<std::num::NonZeroUsize>) {
+        match self {
+            Physics::Inline(p) => p.sim.set_coupling_trace_limit(limit),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.coupling_trace = None;
+                p.handle
+                    .command(PhysicsCommand::SetCouplingTraceLimit(limit));
+                p.barrier();
+            },
+        }
+    }
+
+    /// Evidence from the latest executed coupling tick (latest folded snapshot
+    /// offloaded). Call `refresh` to receive actor evidence. It is historical,
+    /// not an evaluation of today's pose, and excludes post-integration effects.
+    pub fn coupling_trace(&self) -> Option<&crate::CouplingTrace> {
+        match self {
+            Physics::Inline(p) => p.sim.coupling_trace(),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => p.coupling_trace.as_ref(),
         }
     }
 
@@ -843,6 +884,7 @@ impl ActorPhysics {
             self.energy = update.snapshot.energy;
             self.speed = update.snapshot.speed;
             self.pace = update.pace;
+            self.coupling_trace = update.coupling_trace.and_then(|delivery| delivery.read());
         }
     }
 }
