@@ -2,7 +2,8 @@
 name = "tenant"
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.92.0"
+
+rust-version = "1.97.1"
 license.workspace = true
 description = "The lit body tenant: rigid and glTF bodies rasterised on the host's device into the host's targets, lit by the stack's light block and depth-joined with a tracer."
 repository = "https://github.com/merely-made/mere"

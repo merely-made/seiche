@@ -2,7 +2,8 @@
 name = "conatus"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.92.0"
+
+rust-version = "1.97.1"
 license.workspace = true
 description = "Host-neutral 3D body, collision, query, and fixed-step runtime for Merely spatial applications and games."
 repository = "https://github.com/merely-made/mere"
