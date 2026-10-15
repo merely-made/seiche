@@ -44,6 +44,7 @@ pub mod field_ast;
 pub mod lower_burn;
 pub mod projection;
 pub mod registry;
+pub mod responsive_path;
 #[cfg(feature = "field-rhai")]
 pub mod rhai_bindings;
 
@@ -55,3 +56,8 @@ pub use field_ast as ast;
 pub use field_ast::{Falloff, ScalarField, VectorField};
 pub use projection::{FieldProjection, FieldProjectionBuilder};
 pub use registry::{FieldDef, FieldRegistry};
+pub use responsive_path::{
+    MAX_COMPATIBILITY_KEY_BYTES, MAX_CONTROL_POINTS, MAX_FIELD_AST_DEPTH, MAX_FIELD_AST_NODES,
+    MAX_FIELDS, MAX_ITERATIONS, MAX_LINKS, PathField, ResponsiveLink, ResponsivePath,
+    ResponsivePathConfig, ResponsivePathError, evaluate_responsive_paths,
+};
