@@ -46,7 +46,7 @@ fn client() -> Option<ResidentClient> {
         ..Default::default()
     }))
     .ok()?;
-    Some(ResidentClient::init(burn::backend::wgpu::WgpuSetup {
+    Some(ResidentClient::init(cubecl::wgpu::WgpuSetup {
         instance,
         adapter,
         device,

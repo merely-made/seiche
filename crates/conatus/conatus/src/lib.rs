@@ -17,28 +17,41 @@
 //! [`BodyState`] changes; they do not own transforms. Product records decide
 //! which spatial outcomes become durable facts.
 
+#[cfg(feature = "bodies")]
 mod body;
+#[cfg(feature = "bodies")]
 mod clock;
+#[cfg(feature = "bodies")]
 mod command;
+#[cfg(feature = "bodies")]
 mod engine;
 #[cfg(feature = "resident")]
 pub mod resident;
+#[cfg(feature = "bodies")]
 mod schedule;
+#[cfg(feature = "bodies")]
 mod world;
 
+#[cfg(feature = "bodies")]
 pub use body::{
     BodyDesc, BodyId, BodyKind, BodyState, CharacterAutostep, CharacterCollision, CharacterConfig,
     CharacterMove, ColliderDesc, ColliderId, ColliderShape, CollisionLayers, Material,
     SpatialFilter, Transform, Velocity, VoxelChange,
 };
+#[cfg(feature = "bodies")]
 pub use clock::{ClockAdvance, ClockError, FixedClock};
+#[cfg(feature = "bodies")]
 pub use command::{BodyCommand, CommandEffect, CommandId, CommandResult};
+#[cfg(feature = "bodies")]
 pub use engine::{Engine, EngineConfig, EngineConfigError, EngineError, FrameUpdate};
+#[cfg(feature = "bodies")]
 pub use nisus::{
     VoxelAddress, VoxelCellChange, VoxelCellEdit, VoxelChunk, VoxelChunkError, VoxelEdit,
     VoxelPatch, VoxelRegion, split_voxel_address,
 };
+#[cfg(feature = "bodies")]
 pub use schedule::{Phase, Resources, SystemContext, SystemError};
+#[cfg(feature = "bodies")]
 pub use world::{
     BodyError, BodyWorld, Interaction, InteractionEvent, InteractionState, RayHit, ShapeContact,
     StepUpdate, VoxelBox, VoxelCells, VoxelEditSummary,

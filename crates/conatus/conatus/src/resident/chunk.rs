@@ -22,14 +22,16 @@ use std::{
     task::{Context, Waker},
 };
 
+#[cfg(feature = "burn")]
 use burn::tensor::{DType, Shape, Tensor};
-use burn_wgpu::{
-    CubeTensor, RuntimeOptions, Wgpu, WgpuDevice, WgpuSetup, init_device,
-};
+#[cfg(feature = "burn")]
+use burn_wgpu::{CubeTensor, Wgpu};
 use bytemuck::Pod;
+use cubecl::wgpu::{RuntimeOptions, WgpuDevice, WgpuSetup, init_device};
 use cubecl::{client::Client, server::Handle};
 
 /// Burn's view of one resident `f32` channel plane.
+#[cfg(feature = "burn")]
 pub type ResidentTensor = Tensor<3>;
 
 /// The host schedule epoch in which a materialized chunk is safe to read.
@@ -355,6 +357,7 @@ impl SpatialLease<'_> {
 }
 
 /// One Burn arrangement of a resident `f32` plane.
+#[cfg(feature = "burn")]
 #[derive(Clone, Debug)]
 pub struct BurnTensorView {
     tensor: ResidentTensor,
@@ -364,6 +367,7 @@ pub struct BurnTensorView {
     stamp: ChunkStamp,
 }
 
+#[cfg(feature = "burn")]
 impl BurnTensorView {
     pub fn tensor(&self) -> &ResidentTensor {
         &self.tensor
@@ -795,6 +799,7 @@ impl<I> ResidentChunk<I> {
     }
 
     /// Construct a Burn `f32` tensor over the same CubeCL handle.
+    #[cfg(feature = "burn")]
     ///
     /// This constructor only accepts an `F32` plane. Exact integer planes stay
     /// exact rather than acquiring a lossy float interpretation for convenience.
