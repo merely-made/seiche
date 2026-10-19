@@ -62,6 +62,9 @@ use rapier2d::prelude::*;
 /// own keys (from any graph, or minted directly); seiche never inspects them.
 pub type NodeKey = petgraph::stable_graph::NodeIndex;
 
+mod edge_topology;
+pub use edge_topology::{EdgeIter, EdgeRun, EdgeTopology};
+
 /// Where a [`Simulation`] ticks: the inline / actor backend a host drives
 /// instead of owning a frame loop and a settle budget of its own. (Lifted out
 /// of `mere-canvas` 2026-09-04.)
@@ -209,8 +212,8 @@ pub use scene_spec::{
 /// ([`NodeMaterial`]), and the [`Simulation`] methods that re-apply each to live bodies. (Node-rep.)
 mod node_body;
 mod obstacles;
-pub use obstacles::StaticObstacle;
 pub use node_body::{NodeCollider, NodeMaterial};
+pub use obstacles::StaticObstacle;
 
 /// The **sieve**: collision predicates as data — nodes carry [`Kinds`], a sieve scene body
 /// blocks the kinds it names and passes the rest, computed by rapier's interaction groups
@@ -479,7 +482,7 @@ pub struct Simulation {
     ccd_solver: CCDSolver,
     bodies_by_node: HashMap<NodeKey, RigidBodyHandle>,
     static_obstacles: Vec<RigidBodyHandle>,
-    edges: Vec<(NodeKey, NodeKey)>,
+    edges: EdgeTopology,
     forces: Vec<Box<dyn Force>>,
     /// Field couplings as a separately-replaceable force list (built-in layout
     /// forces stay in `forces`). A `CouplingForce` snapshots its target node set at
@@ -586,7 +589,7 @@ impl Simulation {
             ccd_solver: CCDSolver::new(),
             bodies_by_node: HashMap::new(),
             static_obstacles: Vec::new(),
-            edges: Vec::new(),
+            edges: EdgeTopology::default(),
             forces: Vec::new(),
             coupling_forces: Vec::new(),
             coupling_trace_session: CouplingTraceSession::new(),
@@ -787,11 +790,10 @@ impl Simulation {
     /// query index, so those reads can run on the UI thread while the simulation
     /// itself ticks elsewhere (the always-offload physics actor, P6).
     pub fn view(&self) -> LayoutView {
-        LayoutView::from_parts(
-            self.positions(),
-            self.edges.iter().copied(),
-            NODE_BODY_RADIUS,
-        )
+        let mut view =
+            LayoutView::from_parts(self.positions(), std::iter::empty(), NODE_BODY_RADIUS);
+        view.set_edge_topology(self.edges.clone());
+        view
     }
 
     /// A `Send` [`LayoutSnapshot`] of the current positions, stamped with
@@ -903,12 +905,17 @@ impl Simulation {
             for (_, body) in self.bodies.iter_mut() {
                 body.reset_forces(false);
             }
+            // Preserve the public ForceContext slice contract for every law
+            // and external Force implementation. This transient compatibility
+            // read is the sole expanded topology at the evaluation boundary;
+            // simulation/view/actor retain only counted runs.
+            let edges: Vec<_> = self.edges.iter().copied().collect();
             let mut ctx = ForceContext {
                 bodies: &mut self.bodies,
                 colliders: &self.colliders,
                 joints: &mut self.impulse_joints,
                 bodies_by_node: &self.bodies_by_node,
-                edges: &self.edges,
+                edges: &edges,
                 repulsion: self.repulsion.as_mut(),
                 step: self.steps,
                 field_clock: self.field_clock,

@@ -99,7 +99,7 @@ pub struct LayoutSnapshot {
 #[derive(Clone, Debug)]
 pub struct LayoutView {
     positions: HashMap<NodeKey, Point2D<f32>>,
-    edges: Vec<(NodeKey, NodeKey)>,
+    edges: crate::EdgeTopology,
     radius: f32,
     /// Per-node radius overrides (a node sized away from the uniform default by
     /// size-by-degree or a per-node footprint). A node absent here picks/culls at
@@ -125,7 +125,7 @@ impl LayoutView {
     pub fn new() -> Self {
         Self {
             positions: HashMap::new(),
-            edges: Vec::new(),
+            edges: crate::EdgeTopology::default(),
             radius: NODE_BODY_RADIUS,
             radii: HashMap::new(),
             scene: Vec::new(),
@@ -182,8 +182,12 @@ impl LayoutView {
 
     /// Replace the edge topology (after a structural graph change).
     pub fn set_edges(&mut self, edges: impl IntoIterator<Item = (NodeKey, NodeKey)>) {
-        self.edges.clear();
-        self.edges.extend(edges);
+        self.set_edge_topology(edges.into_iter().collect());
+    }
+
+    /// Replace the host's counted input without an expanded topology cache.
+    pub fn set_edge_topology(&mut self, topology: crate::EdgeTopology) {
+        self.edges = topology;
     }
 
     /// Locally override one node's position (a dragged node tracking the cursor),

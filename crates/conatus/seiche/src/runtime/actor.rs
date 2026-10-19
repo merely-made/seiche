@@ -139,6 +139,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
     match cmd {
         PhysicsCommand::SyncNodes(nodes) => sim.sync_nodes(nodes),
         PhysicsCommand::SyncEdges(edges) => sim.sync_edges(edges),
+        PhysicsCommand::SyncEdgeTopology(topology) => sim.sync_edge_topology(topology),
         PhysicsCommand::Seed(positions) => {
             sim.seed_positions(positions);
             state.pace.forget();
@@ -257,5 +258,49 @@ mod tests {
             2,
             "both bodies are in the snapshot"
         );
+    }
+    #[test]
+    fn actor_counted_command_preserves_the_same_trajectory() {
+        use armillary::{Wake, spawn};
+        use std::sync::Arc;
+        let rows = vec![(NodeKey::new(0), NodeKey::new(1)); 3];
+        let run_with_topology = |counted| {
+            let mut sim = Simulation::new();
+            sim.sync_nodes((0..3).map(|i| {
+                (
+                    NodeKey::new(i),
+                    Point2D::new(i as f32 * 230.0, i as f32 * 37.0),
+                )
+            }));
+            sim.add_force(crate::EdgeSpring::default());
+            let wake: Wake = Arc::new(|| {});
+            let (handle, updates) = spawn(wake, move |commands, out| {
+                run(sim, ActorState::fresh(0, false, false), commands, out)
+            });
+            let command = if counted {
+                crate::PhysicsCommand::SyncEdgeTopology(rows.iter().copied().collect())
+            } else {
+                crate::PhysicsCommand::SyncEdges(rows.clone())
+            };
+            handle.command(command);
+            handle.command(crate::PhysicsCommand::Settle(6));
+            drop(handle);
+            let mut frames: Vec<_> = updates
+                .iter()
+                .map(|update| {
+                    let mut p = update.snapshot.positions;
+                    p.sort_by_key(|(key, _)| key.index());
+                    p.into_iter()
+                        .map(|(key, p)| (key.index(), p.x.to_bits(), p.y.to_bits()))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            frames.dedup();
+            frames
+        };
+        let legacy = run_with_topology(false);
+        let counted = run_with_topology(true);
+        assert!(!counted.is_empty());
+        assert_eq!(counted, legacy);
     }
 }

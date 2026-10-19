@@ -39,9 +39,9 @@ use armillary::{ActorHandle, Wake, spawn};
 use euclid::default::Point2D;
 
 use crate::{
-    AffinitySpring, Basin, CouplingForce, FluidParams, Force, LaggedRepulsion, LaggedStats,
-    LayoutSnapshot, LayoutView, NodeCollider, NodeKey, NodeMaterial, SceneEmitter, SceneField,
-    SceneSpec, Simulation,
+    AffinitySpring, Basin, CouplingForce, EdgeTopology, FluidParams, Force, LaggedRepulsion,
+    LaggedStats, LayoutSnapshot, LayoutView, NodeCollider, NodeKey, NodeMaterial, SceneEmitter,
+    SceneField, SceneSpec, Simulation,
 };
 
 /// Per-tick timestep handed to the simulation: one 60fps frame. The whole
@@ -87,6 +87,8 @@ pub enum PhysicsCommand {
     SyncNodes(Vec<(NodeKey, Point2D<f32>)>),
     /// Replace the spring edge topology.
     SyncEdges(Vec<(NodeKey, NodeKey)>),
+    /// Replace ordered counted topology without expanding the actor payload.
+    SyncEdgeTopology(EdgeTopology),
     /// Override the positions of existing bodies (a seed / reseed).
     Seed(Vec<(NodeKey, Point2D<f32>)>),
     ResetFieldRuntime(Vec<(NodeKey, Point2D<f32>)>),
@@ -392,11 +394,16 @@ impl Physics {
 
     /// Replace the spring edge topology.
     pub fn sync_edges(&mut self, edges: Vec<(NodeKey, NodeKey)>) {
+        self.sync_edge_topology(edges.into_iter().collect());
+    }
+
+    /// Replace counted topology on either backend, retaining row order.
+    pub fn sync_edge_topology(&mut self, topology: EdgeTopology) {
         match self {
-            Physics::Inline(p) => p.sim.sync_edges(edges),
+            Physics::Inline(p) => p.sim.sync_edge_topology(topology),
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SyncEdges(edges));
+                p.handle.command(PhysicsCommand::SyncEdgeTopology(topology));
             },
         }
     }
@@ -658,7 +665,8 @@ impl Physics {
             Physics::Inline(p) => p.sim.set_static_obstacles(obstacles),
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetStaticObstacles(obstacles));
+                p.handle
+                    .command(PhysicsCommand::SetStaticObstacles(obstacles));
             },
         }
     }

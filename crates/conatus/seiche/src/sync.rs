@@ -15,7 +15,7 @@ use crate::NodeKey;
 use euclid::default::Point2D;
 use rapier2d::prelude::*;
 
-use crate::{DEFAULT_ANGULAR_DAMPING, NODE_BODY_RADIUS, Simulation};
+use crate::{DEFAULT_ANGULAR_DAMPING, EdgeTopology, NODE_BODY_RADIUS, Simulation};
 
 impl Simulation {
     /// Replace the topology the layout forces pull along (see
@@ -24,8 +24,18 @@ impl Simulation {
     /// should shape the layout (e.g. semantic edges, not arrangement). Idempotent; replaces the
     /// whole edge list.
     pub fn sync_edges(&mut self, edges: impl IntoIterator<Item = (NodeKey, NodeKey)>) {
-        self.edges.clear();
-        self.edges.extend(edges);
+        self.sync_edge_topology(edges.into_iter().collect());
+    }
+
+    /// Replace counted topology without expanding its logical source rows.
+    /// Every force still receives the same ordered rows through its existing
+    /// slice contract; counts do not change the installed law.
+    pub fn sync_edge_topology(&mut self, topology: EdgeTopology) {
+        self.edges = topology;
+    }
+
+    pub fn edge_topology(&self) -> &EdgeTopology {
+        &self.edges
     }
 
     /// Number of edges currently feeding the layout forces.

@@ -116,12 +116,13 @@ impl Probe {
             }
         }
         let sim = &mut self.sim;
+        let edges: Vec<_> = sim.edges.iter().copied().collect();
         let mut ctx = ForceContext {
             bodies: &mut sim.bodies,
             colliders: &sim.colliders,
             joints: &mut sim.impulse_joints,
             bodies_by_node: &sim.bodies_by_node,
-            edges: &sim.edges,
+            edges: &edges,
             repulsion: None,
             step: sim.steps,
             field_clock: sim.field_clock,
@@ -139,11 +140,12 @@ impl Probe {
     /// Term `term`'s energy at the current positions.
     pub fn energy(&self, force: &dyn Force, term: usize) -> Option<f64> {
         let nodes = self.nodes();
+        let edges: Vec<_> = self.sim.edges.iter().copied().collect();
         force.energy(
             term,
             &Layout {
                 nodes: &nodes,
-                edges: &self.sim.edges,
+                edges: &edges,
             },
         )
     }
@@ -151,12 +153,13 @@ impl Probe {
     /// Term `term`'s metric weights, or ones for a term with no metric.
     pub fn weights(&self, force: &dyn Force, term: usize) -> Vec<f64> {
         let nodes = self.nodes();
+        let edges: Vec<_> = self.sim.edges.iter().copied().collect();
         force
             .metric(
                 term,
                 &Layout {
                     nodes: &nodes,
-                    edges: &self.sim.edges,
+                    edges: &edges,
                 },
             )
             .unwrap_or_else(|| vec![1.0; self.len()])
