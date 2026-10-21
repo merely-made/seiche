@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use numen::{CouplingResponse, FieldDefinition, FieldExtent, ScalarField, VectorField};
 
 fn perpetual_pair() -> Simulation {
     let mut sim = Simulation::new();
@@ -20,6 +21,148 @@ fn perpetual_pair() -> Simulation {
     }));
     assert!(sim.wants_continuous_tick());
     sim
+}
+
+fn seeded_field_physics() -> (Physics, LayoutView, [NodeKey; 2]) {
+    let nodes = [NodeKey::new(0), NodeKey::new(1)];
+    let mut sim = Simulation::new();
+    sim.sync_nodes(vec![
+        (nodes[0], Point2D::new(-80.0, 0.0)),
+        (nodes[1], Point2D::new(80.0, 0.0)),
+    ]);
+    sim.sync_edges([(nodes[0], nodes[1])]);
+    sim.add_force(crate::Anneal::seeded(0x5eed));
+    sim.set_coupling_forces(vec![
+        crate::CouplingForce::new(
+            CouplingResponse::FlowAdvect,
+            1.0,
+            [nodes[0]],
+            FieldDefinition::Vector(VectorField::Scale(
+                Box::new(VectorField::const_vec(8.0, 0.0)),
+                Box::new(ScalarField::Time),
+            )),
+        )
+        .with_extent(FieldExtent::Global),
+    ]);
+    let view = sim.view();
+    (Physics::inline(sim, 0), view, nodes)
+}
+
+fn state_bits(physics: &Physics, nodes: [NodeKey; 2]) -> Vec<(NodeKey, [u32; 4])> {
+    let Physics::Inline(inline) = physics else {
+        panic!("this deterministic regression uses the inline backend")
+    };
+    nodes
+        .into_iter()
+        .map(|node| {
+            let position = inline.sim.position_of(node).unwrap();
+            let velocity = inline.sim.velocity_of(node).unwrap();
+            (
+                node,
+                [
+                    position.x.to_bits(),
+                    position.y.to_bits(),
+                    velocity.x.to_bits(),
+                    velocity.y.to_bits(),
+                ],
+            )
+        })
+        .collect()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TickWitness {
+    labelled_state: Vec<(NodeKey, [u32; 4])>,
+    field_elapsed: u64,
+}
+
+fn advance_and_record(
+    physics: &mut Physics,
+    view: &mut LayoutView,
+    nodes: [NodeKey; 2],
+    ticks: usize,
+) -> Vec<TickWitness> {
+    let mut witnesses = Vec::with_capacity(ticks);
+    for _ in 0..ticks {
+        assert!(physics.advance_frame(view));
+        witnesses.push(TickWitness {
+            labelled_state: state_bits(physics, nodes),
+            field_elapsed: physics.field_clock().elapsed.to_bits(),
+        });
+    }
+    witnesses
+}
+
+#[test]
+fn halt_no_tick_resume_matches_uninterrupted_seeded_law_and_animated_field() {
+    const PREFIX: usize = 11;
+    const SUFFIX: usize = 17;
+    const TOTAL: usize = PREFIX + SUFFIX;
+
+    let (mut uninterrupted, mut uninterrupted_view, nodes) = seeded_field_physics();
+    let (mut split, mut split_view, split_nodes) = seeded_field_physics();
+    assert_eq!(nodes, split_nodes);
+
+    let uninterrupted_ticks =
+        advance_and_record(&mut uninterrupted, &mut uninterrupted_view, nodes, TOTAL);
+    let split_prefix = advance_and_record(&mut split, &mut split_view, nodes, PREFIX);
+    assert_eq!(&split_prefix, &uninterrupted_ticks[..PREFIX]);
+    let paused_state = state_bits(&split, nodes);
+    let paused_clock = split.field_clock();
+    assert!(paused_clock.elapsed > 0.0);
+    assert!(!paused_clock.paused);
+
+    split.halt();
+    let halt_clock = split.field_clock();
+    assert_eq!(halt_clock.elapsed.to_bits(), paused_clock.elapsed.to_bits());
+    assert!(halt_clock.paused);
+    let paused = split.advance_elapsed(
+        &mut split_view,
+        std::time::Duration::from_secs(5),
+        ElapsedStepConfig {
+            max_elapsed: std::time::Duration::from_secs(5),
+            max_steps: 300,
+        },
+    );
+    assert_eq!(paused.steps, 0, "halted elapsed time cannot add ticks");
+    assert_eq!(paused.discarded_elapsed, std::time::Duration::from_secs(5));
+    assert_eq!(state_bits(&split, nodes), paused_state);
+    assert_eq!(
+        split.field_clock().elapsed.to_bits(),
+        halt_clock.elapsed.to_bits()
+    );
+    assert!(!split.is_settling());
+
+    split.settle(1);
+    assert!(split.is_settling());
+    let resumed_ticks = advance_and_record(&mut split, &mut split_view, nodes, SUFFIX);
+    for (suffix_tick, resumed) in resumed_ticks.iter().enumerate() {
+        assert_eq!(
+            resumed,
+            &uninterrupted_ticks[PREFIX + suffix_tick],
+            "state and field time diverged at resumed suffix tick {}",
+            suffix_tick + 1
+        );
+    }
+
+    assert_eq!(state_bits(&split, nodes), state_bits(&uninterrupted, nodes));
+    assert_eq!(
+        split.field_clock().elapsed.to_bits(),
+        uninterrupted.field_clock().elapsed.to_bits(),
+        "the field clock must match after the same accepted tick count"
+    );
+    assert!(!split.field_clock().paused);
+
+    // A one-tick-short control witnesses that the equality above detects a
+    // lost or extra body tick instead of merely comparing a stationary state.
+    let (mut short, mut short_view, _) = seeded_field_physics();
+    let short_ticks = advance_and_record(&mut short, &mut short_view, nodes, TOTAL - 1);
+    let short_final = short_ticks.last().expect("TOTAL is positive");
+    assert_ne!(state_bits(&split, nodes), short_final.labelled_state);
+    assert_ne!(
+        split.field_clock().elapsed.to_bits(),
+        short_final.field_elapsed
+    );
 }
 
 #[test]

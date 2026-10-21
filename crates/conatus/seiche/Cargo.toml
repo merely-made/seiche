@@ -12,6 +12,15 @@ categories = ["graphics", "simulation"]
 [lib]
 path = "src/lib.rs"
 
+[[example]]
+name = "binding_replay"
+required-features = ["serde"]
+
+[[example]]
+name = "binding_replay_wasm"
+crate-type = ["cdylib"]
+required-features = ["serde"]
+
 [dependencies]
 # rapier2d is the dynamics + collision substrate. Mere's spatial
 # behavior (node exclusion, edge springs, themable moot fields) all
@@ -71,6 +80,7 @@ gpu-bench = ["tensor-burn-wgpu"]
 serde = ["dep:serde", "dep:serde_path_to_error"]
 
 [dev-dependencies]
+state-witness = { path = "../../system/state-witness" }
 uuid = "1"
 # The spec's round trips: JSON as a scene carries it, TOML as a recipe file.
 serde_json = "1"
@@ -78,3 +88,6 @@ toml = "0.8"
 # The `gpu` receipts boot an adapter of their own.
 pollster = "0.4"
 wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen = "=0.2.129"
