@@ -42,7 +42,7 @@ tracing = "0.1"
 # the simulation onto. Optional (feature `actor`, on by default) so a consumer
 # that only wants the integrator — a wasm build, a batch layout job — takes the
 # inline backend and no threading runtime at all.
-armillary = { version = "0.1.1", optional = true, git = "https://github.com/merely-made/armillary.git", rev = "e67c5def1c735be047492a867bcdc8b41fba22b8" }
+armillary = { version = "0.1.1", optional = true, git = "https://github.com/merely-made/armillary.git", rev = "92d5b15cf39aaac40a3f2d863ffee69c9be11bfc" }
 # The lagged evaluator on the host's device (feature `gpu`): conatus's
 # resident lane, and the wgpu handle types a host passes in.
 conatus = { path = "../conatus", version = "0.1.0", default-features = false, features = ["resident"], optional = true }
