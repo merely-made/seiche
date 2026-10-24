@@ -47,8 +47,8 @@ armillary = { version = "0.1.1", optional = true, git = "https://github.com/mere
 # resident lane, and the wgpu handle types a host passes in.
 conatus = { path = "../conatus", version = "0.1.0", default-features = false, features = ["resident"], optional = true }
 wgpu = { version = "30", default-features = false, optional = true }
-burn = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
-burn-wgpu = { version = "=0.22.0", default-features = false, features = ["std", "autotune"], optional = true }
+burn = { version = "=0.22.1", default-features = false, features = ["std"], optional = true }
+burn-wgpu = { version = "=0.22.1", default-features = false, features = ["std", "autotune"], optional = true }
 
 # The dynamics spec's (de)serialization (feature `serde`): one serde type for
 # every format, JSON in a saved scene, CBOR in personal sync, TOML for a recipe

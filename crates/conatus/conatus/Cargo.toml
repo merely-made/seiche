@@ -17,9 +17,9 @@ rapier3d = { version = "0.36", features = ["enhanced-determinism"], optional = t
 serde = { version = "1", features = ["derive"], optional = true }
 wgpu = { version = "30", default-features = false, features = ["wgsl"], optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
-cubecl = { version = "=0.11.0", default-features = false, features = ["std", "wgpu"], optional = true }
-burn = { version = "=0.22.0", default-features = false, features = ["std"], optional = true }
-burn-wgpu = { version = "=0.22.0", default-features = false, features = ["std", "autotune"], optional = true }
+cubecl = { version = "=0.11.1", default-features = false, features = ["std", "wgpu"], optional = true }
+burn = { version = "=0.22.1", default-features = false, features = ["std"], optional = true }
+burn-wgpu = { version = "=0.22.1", default-features = false, features = ["std", "autotune"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
