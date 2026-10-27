@@ -18,6 +18,36 @@ use rapier2d::prelude::*;
 use crate::{DEFAULT_ANGULAR_DAMPING, EdgeTopology, NODE_BODY_RADIUS, Simulation};
 
 impl Simulation {
+    /// Reconcile nodes after the host has ended the named memberships. Retired
+    /// keys lose their bodies and remembered per-node settings before spawning
+    /// replacements. Ordinary syncs keep their existing retention semantics.
+    /// The host still owns rebuilding forces/topology that refer to these keys.
+    pub fn sync_nodes_retiring(
+        &mut self,
+        nodes: impl IntoIterator<Item = (NodeKey, Point2D<f32>)>,
+        retired: impl IntoIterator<Item = NodeKey>,
+    ) {
+        for key in retired {
+            self.remove_node_body(key);
+            self.node_materials.remove(&key);
+            self.sift.node_kinds.remove(&key);
+        }
+        self.sync_nodes(nodes);
+    }
+
+    fn remove_node_body(&mut self, key: NodeKey) {
+        if let Some(handle) = self.bodies_by_node.remove(&key) {
+            self.bodies.remove(
+                handle,
+                &mut self.islands,
+                &mut self.colliders,
+                &mut self.impulse_joints,
+                &mut self.multibody_joints,
+                &mut self.soft_bodies,
+                true,
+            );
+        }
+    }
     /// Replace the topology the layout forces pull along (see
     /// [`ForceContext::edges`](crate::ForceContext::edges)). Caller-chosen node-key pairs: seiche
     /// does not read graph edges itself, so the caller filters to the relation families that
@@ -152,17 +182,7 @@ impl Simulation {
             .filter(|key| !seen.contains(key))
             .collect();
         for key in stale {
-            if let Some(handle) = self.bodies_by_node.remove(&key) {
-                self.bodies.remove(
-                    handle,
-                    &mut self.islands,
-                    &mut self.colliders,
-                    &mut self.impulse_joints,
-                    &mut self.multibody_joints,
-                    &mut self.soft_bodies,
-                    /* remove_attached_colliders */ true,
-                );
-            }
+            self.remove_node_body(key);
         }
     }
 }
@@ -171,6 +191,49 @@ impl Simulation {
 mod tests {
     use super::*;
     use crate::NodeExclusion;
+
+    #[test]
+    fn retiring_a_body_forgets_its_settings_and_preserves_other_bodies() {
+        let (a, b) = (NodeKey::new(0), NodeKey::new(1));
+        let nodes = [(a, Point2D::new(10., 20.)), (b, Point2D::new(30., 40.))];
+        let mut sim = Simulation::new();
+        sim.sync_nodes(nodes);
+        let ah = sim.bodies_by_node[&a];
+        let bh = sim.bodies_by_node[&b];
+        for key in [a, b] {
+            sim.pin(key, Point2D::new(90., 80.));
+            sim.set_node_kinds(key, crate::Kinds(7));
+        }
+        let material = crate::NodeMaterial {
+            restitution: 0.6,
+            ..Default::default()
+        };
+        sim.set_node_materials([(a, material), (b, material)]);
+        sim.sync_nodes_retiring(nodes, []);
+        assert_eq!(
+            sim.bodies_by_node[&a], ah,
+            "ordinary sync keeps body identity"
+        );
+        sim.sync_nodes_retiring(nodes, [a]);
+        assert_ne!(
+            sim.bodies_by_node[&a], ah,
+            "replacement has a new Rapier generation"
+        );
+        assert_eq!(sim.bodies_by_node[&b], bh);
+        assert!(sim.bodies[sim.body_for(a).unwrap()].is_dynamic());
+        assert!(sim.bodies[sim.body_for(b).unwrap()].is_kinematic());
+        assert_eq!(sim.node_kinds(a), crate::Kinds::NONE);
+        assert_eq!(sim.node_kinds(b), crate::Kinds(7));
+        assert_eq!(sim.node_material(a), Some(crate::NodeMaterial::default()));
+        assert_eq!(sim.node_material(b), Some(material));
+        assert_eq!(sim.position_of(a), Some(nodes[0].1));
+        // A separate-call exit also drops remembered state before the slot returns.
+        sim.sync_nodes_retiring([nodes[1]], [a]);
+        assert!(!sim.node_materials.contains_key(&a));
+        assert!(!sim.sift.node_kinds.contains_key(&a));
+        sim.sync_nodes(nodes);
+        assert_eq!(sim.node_material(a), Some(crate::NodeMaterial::default()));
+    }
 
     /// Physics runs on abstract node keys with no graph at all: seiche's graph-free
     /// surface (`sync_nodes` / `sync_edges` / `position_of` / `positions`) is the

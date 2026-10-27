@@ -138,6 +138,9 @@ pub(super) fn run(
 fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
     match cmd {
         PhysicsCommand::SyncNodes(nodes) => sim.sync_nodes(nodes),
+        PhysicsCommand::SyncNodesRetiring { nodes, retired } => {
+            sim.sync_nodes_retiring(nodes, retired)
+        },
         PhysicsCommand::SyncEdges(edges) => sim.sync_edges(edges),
         PhysicsCommand::SyncEdgeTopology(topology) => sim.sync_edge_topology(topology),
         PhysicsCommand::Seed(positions) => {
@@ -222,6 +225,31 @@ mod tests {
 
     use super::*;
     use crate::NodeKey;
+
+    #[test]
+    fn actor_retirement_command_replaces_only_the_retired_body() {
+        let (a, b) = (NodeKey::new(0), NodeKey::new(1));
+        let nodes = vec![(a, Point2D::new(10., 20.)), (b, Point2D::new(30., 40.))];
+        let mut sim = Simulation::new();
+        sim.sync_nodes(nodes.clone());
+        sim.pin(a, nodes[0].1);
+        sim.pin(b, nodes[1].1);
+        let mut state = ActorState::fresh(0, false, true);
+        apply(
+            &mut sim,
+            PhysicsCommand::SyncNodesRetiring {
+                nodes,
+                retired: vec![a],
+            },
+            &mut state,
+        );
+        assert!(sim.bodies[sim.body_for(a).unwrap()].is_dynamic());
+        assert!(sim.bodies[sim.body_for(b).unwrap()].is_kinematic());
+        assert!(
+            state.halted,
+            "retirement does not change the owner's pause policy"
+        );
+    }
 
     /// The actor processes a sync + settle and emits layout snapshots, then ends
     /// cleanly when the handle drops. (The physics math itself is seiche's concern;

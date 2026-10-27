@@ -75,6 +75,8 @@ mod field_runtime;
 mod field_runtime_tests;
 #[cfg(test)]
 mod pause_tests;
+#[cfg(all(test, feature = "actor"))]
+mod retirement_tests;
 #[cfg(feature = "actor")]
 pub use coupling_trace_delivery::CouplingTraceDelivery;
 
@@ -85,6 +87,11 @@ pub enum PhysicsCommand {
     /// Reconcile the body set to exactly these `(node, position)` pairs (position
     /// used only for newly-spawned bodies). See [`Simulation::sync_nodes`].
     SyncNodes(Vec<(NodeKey, Point2D<f32>)>),
+    /// Atomically end the retired body lives before reconciling replacements.
+    SyncNodesRetiring {
+        nodes: Vec<(NodeKey, Point2D<f32>)>,
+        retired: Vec<NodeKey>,
+    },
     /// Replace the spring edge topology.
     SyncEdges(Vec<(NodeKey, NodeKey)>),
     /// Replace ordered counted topology without expanding the actor payload.
@@ -388,6 +395,30 @@ impl Physics {
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.handle.command(PhysicsCommand::SyncNodes(nodes));
+            },
+        }
+    }
+
+    /// Reconcile after host-observed member exits, with a snapshot barrier on
+    /// the actor path so pre-retirement layouts cannot reach replacement slots.
+    pub fn sync_nodes_retiring(
+        &mut self,
+        nodes: Vec<(NodeKey, Point2D<f32>)>,
+        retired: Vec<NodeKey>,
+    ) {
+        if retired.is_empty() {
+            self.sync_nodes(nodes);
+            return;
+        }
+        match self {
+            Physics::Inline(p) => p.sim.sync_nodes_retiring(nodes, retired),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.coupling_trace = None;
+                p.coupling_membership = None;
+                p.handle
+                    .command(PhysicsCommand::SyncNodesRetiring { nodes, retired });
+                p.barrier();
             },
         }
     }
