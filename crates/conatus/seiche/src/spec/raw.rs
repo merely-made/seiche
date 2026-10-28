@@ -23,7 +23,7 @@
 //! channel, unresolved here, and a seeded matrix over two or more kinds is
 //! asymmetric, so it derives as declared (N). *Reading, not ruled.*
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G4a.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G4a.
 
 use crate::{
     Anneal, BarnesHutConfig, BarnesHutRepulsion, Boids, Boundary, CounterDamping, DegreeRepulsion,

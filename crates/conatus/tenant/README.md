@@ -25,7 +25,7 @@ speaks plain arrays and wgpu.
 | `frame` | `Tenant`, `FrameReport` and `Exports`: the frame entry and what it hands back. |
 
 The plan and its progress live in mere's conatus engine plan
-(`design_docs/mere_docs/implementation_strategy/2026-08-22_conatus_engine_plan.md`),
+(`design_docs/archive_docs/2026-10-28/2026-08-22_conatus_engine_plan.md`),
 under the engine-component comparison of 2026-10-02.
 
 MPL-2.0.

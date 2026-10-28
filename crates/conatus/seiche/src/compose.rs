@@ -22,7 +22,7 @@
 //! ([`Density::converts`](crate::Density::converts)), off while overlays on
 //! Density stay refused, since on, a crowded start spreads less.
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G3.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G3.
 
 use crate::{Currency, Force, Term};
 

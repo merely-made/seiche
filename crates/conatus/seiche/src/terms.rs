@@ -26,7 +26,7 @@
 //! Contacts, damping and pins live in rapier's step rather than the force
 //! list; they are declared here as [`CONTACTS`], [`DAMPING`] and [`PIN`].
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G1.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G1.
 
 use std::collections::HashMap;
 

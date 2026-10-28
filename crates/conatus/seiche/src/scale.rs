@@ -29,7 +29,7 @@
 //! contact it reads its repulsive core whatever the kind rule, so it stays
 //! off the scale (F90, "Off the scale").
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G3.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G3.
 
 use crate::{Kernel, NODE_BODY_DENSITY, NODE_BODY_RADIUS, Observable, Term, Topology};
 

@@ -34,7 +34,7 @@
 //! with [`SpecVersionError`], an older one read and stamped, and unknown
 //! fields are refused throughout (F98).
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G4a.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G4a.
 
 use std::collections::{BTreeMap, HashMap};
 

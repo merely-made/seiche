@@ -20,7 +20,7 @@
 //!   bodies' velocities, which no position-only test can see, checked beside
 //!   the descent test (F15: "Keep velocity check").
 //!
-//! Plan: `design_docs/mere_docs/implementation_strategy/2026-10-02_dynamics_grammar_plan.md`, G1.
+//! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G1.
 
 use euclid::default::Point2D;
 use rapier2d::prelude::*;
