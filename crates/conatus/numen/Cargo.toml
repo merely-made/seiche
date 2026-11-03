@@ -1,7 +1,7 @@
 [package]
 rust-version = "1.97.1"
 name = "numen"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license.workspace = true
 description = "Field algebra for graph canvases: portable field truth plus evaluation, registry, projection, Rhai authoring, and opt-in Burn lowering. Seiche integrates the force laws."
