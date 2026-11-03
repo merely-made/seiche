@@ -91,3 +91,6 @@ wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan",
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen = "=0.2.129"
+
+[lints]
+workspace = true

@@ -80,3 +80,6 @@ pollster = "0.4"
 seiche = { path = "../seiche" }
 euclid = "0.22"
 wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
+
+[lints]
+workspace = true
