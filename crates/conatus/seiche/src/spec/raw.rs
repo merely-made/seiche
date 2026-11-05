@@ -74,57 +74,11 @@ params! {
     }
 }
 
-impl NodeExclusionParams {
-    pub fn of(f: &NodeExclusion) -> Self {
-        Self {
-            strength: wide(f.strength),
-            cutoff: wide(f.cutoff),
-            min_distance: wide(f.min_distance),
-        }
-    }
-
-    fn build(&self) -> NodeExclusion {
-        NodeExclusion {
-            strength: narrow(self.strength),
-            cutoff: narrow(self.cutoff),
-            min_distance: narrow(self.min_distance),
-        }
-    }
-}
-
-impl Default for NodeExclusionParams {
-    fn default() -> Self {
-        Self::of(&NodeExclusion::default())
-    }
-}
-
 params! {
     /// [`EdgeSpring`]: Hooke's law along the edges.
     pub struct EdgeSpringParams {
         pub stiffness: f64,
         pub rest_length: f64,
-    }
-}
-
-impl EdgeSpringParams {
-    pub fn of(f: &EdgeSpring) -> Self {
-        Self {
-            stiffness: wide(f.stiffness),
-            rest_length: wide(f.rest_length),
-        }
-    }
-
-    fn build(&self) -> EdgeSpring {
-        EdgeSpring {
-            stiffness: narrow(self.stiffness),
-            rest_length: narrow(self.rest_length),
-        }
-    }
-}
-
-impl Default for EdgeSpringParams {
-    fn default() -> Self {
-        Self::of(&EdgeSpring::default())
     }
 }
 
@@ -165,34 +119,6 @@ params! {
     }
 }
 
-impl BarnesHutRepulsionParams {
-    pub fn of(f: &BarnesHutRepulsion) -> Self {
-        Self {
-            strength: wide(f.strength),
-            min_distance: wide(f.min_distance),
-            theta: wide(f.config.theta),
-            min_cell_size: wide(f.config.min_cell_size),
-        }
-    }
-
-    fn build(&self) -> BarnesHutRepulsion {
-        BarnesHutRepulsion {
-            strength: narrow(self.strength),
-            min_distance: narrow(self.min_distance),
-            config: BarnesHutConfig {
-                theta: narrow(self.theta),
-                min_cell_size: narrow(self.min_cell_size),
-            },
-        }
-    }
-}
-
-impl Default for BarnesHutRepulsionParams {
-    fn default() -> Self {
-        Self::of(&BarnesHutRepulsion::default())
-    }
-}
-
 params! {
     /// [`StressSpring`]: springs toward given pair lengths (Stress's graph
     /// distances, Skeleton's spanning tree).
@@ -207,36 +133,6 @@ params! {
     }
 }
 
-impl StressSpringParams {
-    pub fn of(f: &StressSpring) -> Self {
-        Self {
-            pairs: None,
-            unit_length: Some(wide(f.unit_length)),
-            stiffness: wide(f.stiffness),
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<StressSpring, SpecError> {
-        let unit_length = need(self.unit_length, path, "unit_length")?;
-        need(self.pairs.as_ref(), path, "pairs")?;
-        Ok(
-            StressSpring::from_weighted_distances(std::iter::empty(), narrow(unit_length))
-                .with_stiffness(narrow(self.stiffness)),
-        )
-    }
-}
-
-impl Default for StressSpringParams {
-    fn default() -> Self {
-        let mut params = Self::of(&StressSpring::from_weighted_distances(
-            std::iter::empty(),
-            0.0,
-        ));
-        params.unit_length = None;
-        params
-    }
-}
-
 params! {
     /// [`LinLogForce`]: ForceAtlas2's model, LinLog proper at exponent 0.
     pub struct LinlogParams {
@@ -246,36 +142,6 @@ params! {
         pub degree_weighted: bool,
         pub min_distance: f64,
         pub gravity: f64,
-    }
-}
-
-impl LinlogParams {
-    pub fn of(f: &LinLogForce) -> Self {
-        Self {
-            attraction: wide(f.attraction),
-            attraction_exponent: wide(f.attraction_exponent),
-            repulsion: wide(f.repulsion),
-            degree_weighted: f.degree_weighted,
-            min_distance: wide(f.min_distance),
-            gravity: wide(f.gravity),
-        }
-    }
-
-    fn build(&self) -> LinLogForce {
-        LinLogForce {
-            attraction: narrow(self.attraction),
-            attraction_exponent: narrow(self.attraction_exponent),
-            repulsion: narrow(self.repulsion),
-            degree_weighted: self.degree_weighted,
-            min_distance: narrow(self.min_distance),
-            gravity: narrow(self.gravity),
-        }
-    }
-}
-
-impl Default for LinlogParams {
-    fn default() -> Self {
-        Self::of(&LinLogForce::default())
     }
 }
 
@@ -326,38 +192,6 @@ params! {
     }
 }
 
-impl GravityParams {
-    pub fn of(f: &Gravity) -> Self {
-        Self {
-            masses: None,
-            counter_damping: Some(CounterDampingParam::of(f.counter_damping)),
-            strength: wide(f.strength),
-            softening: wide(f.softening),
-            orbital_kick: wide(f.orbital_kick),
-            radial_floor: wide(f.radial_floor),
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<Gravity, SpecError> {
-        need(self.masses.as_ref(), path, "masses")?;
-        let counter = need(self.counter_damping, path, "counter_damping")?;
-        let mut f = Gravity::new(std::iter::empty(), counter.build());
-        f.strength = narrow(self.strength);
-        f.softening = narrow(self.softening);
-        f.orbital_kick = narrow(self.orbital_kick);
-        f.radial_floor = narrow(self.radial_floor);
-        Ok(f)
-    }
-}
-
-impl Default for GravityParams {
-    fn default() -> Self {
-        let mut params = Self::of(&Gravity::new(std::iter::empty(), CounterDamping::Off));
-        params.counter_damping = None;
-        params
-    }
-}
-
 params! {
     /// [`ParticleLife`]: Kinds' kind matrix. The matrix is drawn from the
     /// spec's seed (F101) unless one is given, row-major and square.
@@ -378,54 +212,6 @@ params! {
 /// The kind count a seeded matrix is drawn over when derived (module docs).
 const SEEDED_KINDS: usize = 2;
 
-impl ParticleLifeParams {
-    pub fn of(f: &ParticleLife) -> Self {
-        Self {
-            kinds: None,
-            matrix: None,
-            radius: wide(f.radius),
-            core: wide(f.core),
-            strength: wide(f.strength),
-            gravity: wide(f.gravity),
-        }
-    }
-
-    fn build(&self, path: &str, seed: u64) -> Result<ParticleLife, SpecError> {
-        need(self.kinds.as_ref(), path, "kinds")?;
-        let mut f = match &self.matrix {
-            None => ParticleLife::seeded(std::iter::empty(), SEEDED_KINDS, seed),
-            Some(matrix) => {
-                let k = (matrix.len() as f64).sqrt().round() as usize;
-                if k == 0 || k * k != matrix.len() || k > usize::from(u8::MAX) + 1 {
-                    return Err(SpecError::Invalid {
-                        path: path.to_string(),
-                        reason: format!(
-                            "a kind matrix is square, k × k for 1 to 256 kinds; this one has {} entries",
-                            matrix.len()
-                        ),
-                    });
-                }
-                ParticleLife::new(
-                    std::iter::empty(),
-                    k,
-                    matrix.iter().map(|x| narrow(*x)).collect(),
-                )
-            },
-        };
-        f.radius = narrow(self.radius);
-        f.core = narrow(self.core);
-        f.strength = narrow(self.strength);
-        f.gravity = narrow(self.gravity);
-        Ok(f)
-    }
-}
-
-impl Default for ParticleLifeParams {
-    fn default() -> Self {
-        Self::of(&ParticleLife::new(std::iter::empty(), 1, Vec::new()))
-    }
-}
-
 params! {
     /// [`Boids`]: Flock's steering.
     pub struct BoidsParams {
@@ -436,38 +222,6 @@ params! {
         pub cruise_speed: f64,
         pub cruise: f64,
         pub gravity: f64,
-    }
-}
-
-impl BoidsParams {
-    pub fn of(f: &Boids) -> Self {
-        Self {
-            separation: wide(f.separation),
-            separation_radius: wide(f.separation_radius),
-            alignment: wide(f.alignment),
-            cohesion: wide(f.cohesion),
-            cruise_speed: wide(f.cruise_speed),
-            cruise: wide(f.cruise),
-            gravity: wide(f.gravity),
-        }
-    }
-
-    fn build(&self) -> Boids {
-        Boids {
-            separation: narrow(self.separation),
-            separation_radius: narrow(self.separation_radius),
-            alignment: narrow(self.alignment),
-            cohesion: narrow(self.cohesion),
-            cruise_speed: narrow(self.cruise_speed),
-            cruise: narrow(self.cruise),
-            gravity: narrow(self.gravity),
-        }
-    }
-}
-
-impl Default for BoidsParams {
-    fn default() -> Self {
-        Self::of(&Boids::default())
     }
 }
 
@@ -485,35 +239,6 @@ params! {
     }
 }
 
-impl KuramotoParams {
-    pub fn of(f: &Kuramoto) -> Self {
-        Self {
-            radii: None,
-            natural_frequency: wide(f.natural_frequency),
-            coupling: wide(f.coupling),
-            default_radius: wide(f.default_radius),
-            centre: wide2(f.centre),
-            stiffness: wide(f.stiffness),
-        }
-    }
-
-    fn build(&self) -> Kuramoto {
-        let mut f = Kuramoto::new(std::iter::empty());
-        f.natural_frequency = narrow(self.natural_frequency);
-        f.coupling = narrow(self.coupling);
-        f.default_radius = narrow(self.default_radius);
-        f.centre = narrow2(self.centre);
-        f.stiffness = narrow(self.stiffness);
-        f
-    }
-}
-
-impl Default for KuramotoParams {
-    fn default() -> Self {
-        Self::of(&Kuramoto::new(std::iter::empty()))
-    }
-}
-
 params! {
     /// [`MagneticSpring`]: Flow's springs and needle.
     pub struct MagneticSpringParams {
@@ -523,36 +248,6 @@ params! {
         pub torque: f64,
         pub repulsion: f64,
         pub min_distance: f64,
-    }
-}
-
-impl MagneticSpringParams {
-    pub fn of(f: &MagneticSpring) -> Self {
-        Self {
-            field: wide2(f.field),
-            stiffness: wide(f.stiffness),
-            rest_length: wide(f.rest_length),
-            torque: wide(f.torque),
-            repulsion: wide(f.repulsion),
-            min_distance: wide(f.min_distance),
-        }
-    }
-
-    fn build(&self) -> MagneticSpring {
-        MagneticSpring {
-            field: narrow2(self.field),
-            stiffness: narrow(self.stiffness),
-            rest_length: narrow(self.rest_length),
-            torque: narrow(self.torque),
-            repulsion: narrow(self.repulsion),
-            min_distance: narrow(self.min_distance),
-        }
-    }
-}
-
-impl Default for MagneticSpringParams {
-    fn default() -> Self {
-        Self::of(&MagneticSpring::default())
     }
 }
 
@@ -566,38 +261,6 @@ params! {
         pub ideal_edge: f64,
         pub repulsion: f64,
         pub gravity: f64,
-    }
-}
-
-impl AnnealParams {
-    pub fn of(f: &Anneal) -> Self {
-        Self {
-            initial_temperature: wide(f.initial_temperature),
-            cooling: wide(f.cooling),
-            floor: wide(f.floor),
-            step: wide(f.step),
-            ideal_edge: wide(f.ideal_edge),
-            repulsion: wide(f.repulsion),
-            gravity: wide(f.gravity),
-        }
-    }
-
-    fn build(&self, seed: u64) -> Anneal {
-        let mut f = Anneal::seeded(seed);
-        f.initial_temperature = narrow(self.initial_temperature);
-        f.cooling = narrow(self.cooling);
-        f.floor = narrow(self.floor);
-        f.step = narrow(self.step);
-        f.ideal_edge = narrow(self.ideal_edge);
-        f.repulsion = narrow(self.repulsion);
-        f.gravity = narrow(self.gravity);
-        f
-    }
-}
-
-impl Default for AnnealParams {
-    fn default() -> Self {
-        Self::of(&Anneal::seeded(0))
     }
 }
 
@@ -664,56 +327,6 @@ params! {
     }
 }
 
-impl DensityParams {
-    /// The parameters `f` was built with, its resolution aside (the grid
-    /// holds it, and a spec states it).
-    pub fn of(f: &Density) -> Self {
-        Self {
-            masses: None,
-            resolution: None,
-            area_per_mass: wide(f.area_per_mass),
-            centre: wide2(f.centre),
-            initial_blur: wide(f.initial_blur),
-            seconds: wide(f.seconds),
-            cfl: wide(f.cfl),
-            max_substeps: f.max_substeps,
-            background: wide(f.background),
-            stop: DensityStopParam::of(f.stop),
-            patience: f.patience,
-            max_passes: f.max_passes,
-            min_passes: f.min_passes,
-            renew: f.renew.map(wide),
-            converts: f.converts,
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<Density, SpecError> {
-        need(self.masses.as_ref(), path, "masses")?;
-        let resolution = need(self.resolution, path, "resolution")?;
-        let mut f = Density::new(std::iter::empty(), resolution as usize);
-        f.area_per_mass = narrow(self.area_per_mass);
-        f.centre = narrow2(self.centre);
-        f.initial_blur = narrow(self.initial_blur);
-        f.seconds = narrow(self.seconds);
-        f.cfl = narrow(self.cfl);
-        f.max_substeps = self.max_substeps;
-        f.background = narrow(self.background);
-        f.stop = self.stop.build();
-        f.patience = self.patience;
-        f.max_passes = self.max_passes;
-        f.min_passes = self.min_passes;
-        f.renew = self.renew.map(narrow);
-        f.converts = self.converts;
-        Ok(f)
-    }
-}
-
-impl Default for DensityParams {
-    fn default() -> Self {
-        Self::of(&Density::new(std::iter::empty(), 1))
-    }
-}
-
 params! {
     /// [`DegreeRepulsion`]: Hub room.
     pub struct DegreeRepulsionParams {
@@ -723,31 +336,6 @@ params! {
         pub strength: f64,
         pub radius: f64,
         pub min_distance: f64,
-    }
-}
-
-impl DegreeRepulsionParams {
-    pub fn of(f: &DegreeRepulsion) -> Self {
-        Self {
-            masses: None,
-            strength: wide(f.strength),
-            radius: wide(f.radius),
-            min_distance: wide(f.min_distance),
-        }
-    }
-
-    fn build(&self) -> DegreeRepulsion {
-        let mut f = DegreeRepulsion::default();
-        f.strength = narrow(self.strength);
-        f.radius = narrow(self.radius);
-        f.min_distance = narrow(self.min_distance);
-        f
-    }
-}
-
-impl Default for DegreeRepulsionParams {
-    fn default() -> Self {
-        Self::of(&DegreeRepulsion::default())
     }
 }
 
@@ -761,28 +349,6 @@ params! {
     }
 }
 
-impl DomainClusterParams {
-    pub fn of(f: &DomainCluster) -> Self {
-        Self {
-            groups: None,
-            strength: wide(f.strength),
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<DomainCluster, SpecError> {
-        need(self.groups.as_ref(), path, "groups")?;
-        let mut f = DomainCluster::new(std::iter::empty());
-        f.strength = narrow(self.strength);
-        Ok(f)
-    }
-}
-
-impl Default for DomainClusterParams {
-    fn default() -> Self {
-        Self::of(&DomainCluster::new(std::iter::empty()))
-    }
-}
-
 params! {
     /// [`HubGravity`]: Hub pull.
     pub struct HubGravityParams {
@@ -791,29 +357,6 @@ params! {
         pub masses: Option<String>,
         pub strength: f64,
         pub min_distance: f64,
-    }
-}
-
-impl HubGravityParams {
-    pub fn of(f: &HubGravity) -> Self {
-        Self {
-            masses: None,
-            strength: wide(f.strength),
-            min_distance: wide(f.min_distance),
-        }
-    }
-
-    fn build(&self) -> HubGravity {
-        let mut f = HubGravity::default();
-        f.strength = narrow(self.strength);
-        f.min_distance = narrow(self.min_distance);
-        f
-    }
-}
-
-impl Default for HubGravityParams {
-    fn default() -> Self {
-        Self::of(&HubGravity::default())
     }
 }
 
@@ -829,59 +372,11 @@ params! {
     }
 }
 
-impl DepthGravityParams {
-    pub fn of(f: &DepthGravity) -> Self {
-        Self {
-            depths: None,
-            direction: wide2(f.direction),
-            spacing: wide(f.spacing),
-            strength: wide(f.strength),
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<DepthGravity, SpecError> {
-        need(self.depths.as_ref(), path, "depths")?;
-        let mut f = DepthGravity::new(std::iter::empty());
-        f.direction = narrow2(self.direction);
-        f.spacing = narrow(self.spacing);
-        f.strength = narrow(self.strength);
-        Ok(f)
-    }
-}
-
-impl Default for DepthGravityParams {
-    fn default() -> Self {
-        Self::of(&DepthGravity::new(std::iter::empty()))
-    }
-}
-
 params! {
     /// [`GridSnap`]: Grid.
     pub struct GridSnapParams {
         pub cell: f64,
         pub strength: f64,
-    }
-}
-
-impl GridSnapParams {
-    pub fn of(f: &GridSnap) -> Self {
-        Self {
-            cell: wide(f.cell),
-            strength: wide(f.strength),
-        }
-    }
-
-    fn build(&self) -> GridSnap {
-        GridSnap {
-            cell: narrow(self.cell),
-            strength: narrow(self.strength),
-        }
-    }
-}
-
-impl Default for GridSnapParams {
-    fn default() -> Self {
-        Self::of(&GridSnap::default())
     }
 }
 
@@ -895,36 +390,6 @@ params! {
         /// `(amplitude, period in seconds)`: a moving target, the tide.
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub oscillation: Option<(f64, f64)>,
-    }
-}
-
-impl GravityLocusParams {
-    pub fn of(f: &GravityLocus) -> Self {
-        Self {
-            target: Some(wide2(f.target)),
-            strength: wide(f.strength),
-            oscillation: f.oscillation.map(wide2),
-        }
-    }
-
-    fn build(&self, path: &str) -> Result<GravityLocus, SpecError> {
-        let target = narrow2(need(self.target, path, "target")?);
-        let mut f = match self.oscillation {
-            None => GravityLocus::at(target),
-            Some((amplitude, period)) => {
-                GravityLocus::tidal(target, narrow(amplitude), narrow(period))
-            },
-        };
-        f.strength = narrow(self.strength);
-        Ok(f)
-    }
-}
-
-impl Default for GravityLocusParams {
-    fn default() -> Self {
-        let mut params = Self::of(&GravityLocus::at((0.0, 0.0)));
-        params.target = None;
-        params
     }
 }
 
@@ -1108,3 +573,12 @@ fn need<T>(value: Option<T>, path: &str, field: &'static str) -> Result<T, SpecE
         field,
     })
 }
+
+#[path = "raw/pair_laws.rs"]
+mod pair_laws;
+
+#[path = "raw/field_laws.rs"]
+mod field_laws;
+
+#[path = "raw/placement_laws.rs"]
+mod placement_laws;
