@@ -1,0 +1,56 @@
+# Seiche: the family's spatial runtime. Bodies, voxels, fields, force
+# integration and the lit tenant. Split from Mere with history (engine split
+# plan, P2, D5, D6, D12); see README.md.
+[workspace]
+resolver = "2"
+members = [
+    "crates/conatus/numen",
+    "crates/conatus/seiche",
+    "crates/conatus/seiche-model",
+    "crates/conatus/nisus",
+    "crates/conatus/modulus",
+    "crates/conatus/conatus",
+    # The lit body tenant over the reshaped kiss3d fork (wing rulings 471, 735).
+    "crates/conatus/tenant",
+]
+
+[workspace.package]
+rust-version = "1.97.1"
+version = "0.0.1"
+edition = "2024"
+license = "MPL-2.0"
+authors = ["Mark AB (markik)"]
+repository = "https://github.com/merely-made/seiche"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+missing_safety_doc = "warn"
+undocumented_unsafe_blocks = "warn"
+too_many_lines = "warn"
+
+# The rows the members inherit with `workspace = true`.
+[workspace.dependencies]
+nisus = { version = "0.1.0", path = "crates/conatus/nisus" }
+wgpu = "30.0.1"
+
+# Physics in dev builds (Mere's physics catalog plan, ruled 2026-10-04, "Opt 3
+# in dev for physics"): one Density start took 146.5 s at the dev profile's
+# opt-level 0 and 6.0 s with these six crates at 3. Consumers that build seiche
+# in dev name the same six in their own root.
+[profile.dev.package.seiche]
+opt-level = 3
+[profile.dev.package.rapier2d]
+opt-level = 3
+[profile.dev.package.parry2d]
+opt-level = 3
+[profile.dev.package.nalgebra]
+opt-level = 3
+[profile.dev.package.simba]
+opt-level = 3
+[profile.dev.package.glamx]
+opt-level = 3
