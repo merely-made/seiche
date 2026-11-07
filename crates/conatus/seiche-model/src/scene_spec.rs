@@ -20,7 +20,7 @@ use crate::NodeCollider;
 /// orrery's world, distinct from a [`NodeKey`](crate::NodeKey). Minted by
 /// [`Simulation::add_scene_body`](crate::Simulation::add_scene_body). (Physics scenes P1.)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct SceneBodyId(pub(crate) u64);
+pub struct SceneBodyId(#[doc(hidden)] pub u64);
 
 /// Whether a scene body moves under forces / collision (`Dynamic`) or is immovable terrain
 /// (`Fixed`) — a floor, a wall, a peg, a joint anchor. (Physics scenes P3.)
@@ -176,32 +176,6 @@ pub enum SceneField {
         strength: f32,
         inward: f32,
     },
-}
-
-impl SceneField {
-    /// What the field applies to the scene's dynamic bodies: the swirl is a
-    /// curl (N), the inward pull a gradient of distance (E).
-    pub fn terms(&self) -> Vec<crate::Term> {
-        use crate::{Class, Kernel, Observable, Term, Topology};
-        match self {
-            SceneField::Vortex { .. } => vec![
-                Term::force(
-                    "swirl",
-                    Topology::Unary,
-                    Kernel::Vortex,
-                    Class::N,
-                    Observable::Energy,
-                ),
-                Term::force(
-                    "inward pull",
-                    Topology::Unary,
-                    Kernel::Vortex,
-                    Class::E,
-                    Observable::Residual,
-                ),
-            ],
-        }
-    }
 }
 
 /// A continuous body spawner: emits dynamic scene bodies over time (a fountain, rain, a sand

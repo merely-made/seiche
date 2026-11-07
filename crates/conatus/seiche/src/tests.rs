@@ -481,27 +481,23 @@ fn node_exclusion_scales_to_many_nodes() {
 
 #[test]
 fn node_collider_lowers_to_the_matching_parry_shape() {
+    use crate::node_body::shared_shape;
     // The collider geometry follows the node's visible face: a ball for a circle, a cuboid
     // for a square, a round cuboid for a rounded square, and a convex polygon for a custom
     // hull (with a ball fallback when the hull is degenerate). (Node-rep — collider shape.)
     assert_eq!(
-        NodeCollider::Ball { radius: 10.0 }
-            .to_shared_shape()
-            .shape_type(),
+        shared_shape(&NodeCollider::Ball { radius: 10.0 }).shape_type(),
         ShapeType::Ball
     );
     assert_eq!(
-        NodeCollider::Square { half: 10.0 }
-            .to_shared_shape()
-            .shape_type(),
+        shared_shape(&NodeCollider::Square { half: 10.0 }).shape_type(),
         ShapeType::Cuboid
     );
     assert_eq!(
-        NodeCollider::RoundedSquare {
+        shared_shape(&NodeCollider::RoundedSquare {
             half: 10.0,
             border: 3.0
-        }
-        .to_shared_shape()
+        })
         .shape_type(),
         ShapeType::RoundCuboid,
     );
@@ -510,7 +506,7 @@ fn node_collider_lowers_to_the_matching_parry_shape() {
         fallback: 5.0,
     };
     assert_eq!(
-        square_hull.to_shared_shape().shape_type(),
+        shared_shape(&square_hull).shape_type(),
         ShapeType::ConvexPolygon
     );
     // A degenerate hull (a single point, no area) falls back to the ball.
@@ -518,5 +514,5 @@ fn node_collider_lowers_to_the_matching_parry_shape() {
         points: vec![(0.0, 0.0)],
         fallback: 5.0,
     };
-    assert_eq!(degenerate.to_shared_shape().shape_type(), ShapeType::Ball);
+    assert_eq!(shared_shape(&degenerate).shape_type(), ShapeType::Ball);
 }

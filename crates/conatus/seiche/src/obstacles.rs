@@ -100,7 +100,7 @@ impl Simulation {
                 .rotation(obstacle.rotation)
                 .build();
             let handle = self.bodies.insert(body);
-            let collider = ColliderBuilder::new(obstacle.collider.to_shared_shape())
+            let collider = ColliderBuilder::new(crate::node_body::shared_shape(&obstacle.collider))
                 .collision_groups(InteractionGroups::new(
                     NODE_GROUP,
                     NODE_GROUP,

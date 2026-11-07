@@ -36,6 +36,9 @@ petgraph = "0.8"
 # Field algebra: CouplingForce evaluates numen's default analytic path to drive
 # Rapier bodies. Burn is local and opt-in for tensorized force laws only.
 numen = { path = "../numen", version = "0.2" }
+# The rapier-free model (node keys, colliders, scene specs, roles, the layout view),
+# re-exported here under the old paths.
+seiche-model = { path = "../seiche-model", version = "0.0.1" }
 euclid = "0.22"
 tracing = "0.1"
 # The off-thread half of the `runtime` module: the actor harness a host offloads
@@ -77,7 +80,7 @@ gpu = ["dep:conatus", "dep:wgpu"]
 # Benchmark-only staging helper for the exact NodeExclusion law.
 gpu-bench = ["tensor-burn-wgpu"]
 # The dynamics spec as data: serde on `spec` and the types it names.
-serde = ["dep:serde", "dep:serde_path_to_error"]
+serde = ["dep:serde", "dep:serde_path_to_error", "seiche-model/serde"]
 
 [dev-dependencies]
 state-witness = { path = "../../system/state-witness" }

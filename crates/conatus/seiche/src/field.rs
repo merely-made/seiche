@@ -63,3 +63,36 @@ impl Simulation {
         }
     }
 }
+
+/// The terms a [`SceneField`] declares. A trait because `SceneField` lives in
+/// `seiche-model`, which cannot name the engine's `Term`; `use` it to call
+/// `field.terms()` as before.
+pub trait SceneFieldTerms {
+    /// What the field applies to the scene's dynamic bodies: the swirl is a
+    /// curl (N), the inward pull a gradient of distance (E).
+    fn terms(&self) -> Vec<crate::Term>;
+}
+
+impl SceneFieldTerms for SceneField {
+    fn terms(&self) -> Vec<crate::Term> {
+        use crate::{Class, Kernel, Observable, Term, Topology};
+        match self {
+            SceneField::Vortex { .. } => vec![
+                Term::force(
+                    "swirl",
+                    Topology::Unary,
+                    Kernel::Vortex,
+                    Class::N,
+                    Observable::Energy,
+                ),
+                Term::force(
+                    "inward pull",
+                    Topology::Unary,
+                    Kernel::Vortex,
+                    Class::E,
+                    Observable::Residual,
+                ),
+            ],
+        }
+    }
+}
