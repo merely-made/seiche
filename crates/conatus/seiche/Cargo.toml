@@ -80,7 +80,7 @@ gpu-bench = ["tensor-burn-wgpu"]
 serde = ["dep:serde", "dep:serde_path_to_error"]
 
 [dev-dependencies]
-state-witness = { path = "../../system/state-witness" }
+state-witness = { git = "https://github.com/merely-made/eidetic.git", branch = "main" }
 uuid = "1"
 # The spec's round trips: JSON as a scene carries it, TOML as a recipe file.
 serde_json = "1"
