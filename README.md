@@ -38,9 +38,10 @@ repository after the published crate, and D12 moved `state-witness` and
 `mere-framing` to Eidetic so Seiche has no edge back into Mere. History from
 before the crates reached Mere (2026-07-23) is in their former repositories.
 
-The spatial plans (the conatus engine plan, the dynamics grammar plan, the
-physics catalog plan) stay in Mere's `design_docs/`; see
-`design_docs/DOC_README.md`.
+The conatus engine plan and the conatus and Nexus alignment brief moved here
+with the crates (engine split D25) and live in `design_docs/seiche_docs/`; the
+dynamics grammar plan and the physics catalog plan stay in Mere's
+`design_docs/`. See `design_docs/DOC_README.md`.
 
 ## Consumers
 

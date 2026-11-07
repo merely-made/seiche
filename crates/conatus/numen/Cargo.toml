@@ -5,7 +5,7 @@ version = "0.2.1"
 edition = "2024"
 license.workspace = true
 description = "Field algebra for graph canvases: portable field truth plus evaluation, registry, projection, Rhai authoring, and opt-in Burn lowering. Seiche integrates the force laws."
-repository = "https://github.com/merely-made/mere"
+repository = "https://github.com/merely-made/seiche"
 keywords = ["field", "physics", "force-directed", "graph", "spatial"]
 categories = ["data-structures", "science"]
 

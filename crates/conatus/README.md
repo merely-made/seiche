@@ -40,7 +40,7 @@ are MPL-2.0 (see LICENSE).
 
 Fields are treated as a third canvas primitive beside nodes and edges. Node and
 edge truth lives in the content substrate
-([chartulary](../eidetic/chartulary)); the field *vocabulary* lives here
+([chartulary](https://github.com/merely-made/eidetic)); the field *vocabulary* lives here
 because a field is spatial, while field truth itself belongs to the graph
 realm, persisted beside nodes and edges (the consolidation map's realms
 clause in the conatus engine plan).
@@ -52,4 +52,4 @@ Merged from three sibling repos on 2026-07-21 with histories preserved, absorbed
 into mere's workspace on 2026-07-23.
 
 Background:
-[`design_docs/mere_docs/technical_architecture/2026-05-30_field_system_extraction.md`](../../design_docs/mere_docs/technical_architecture/2026-05-30_field_system_extraction.md).
+[`design_docs/mere_docs/technical_architecture/2026-05-30_field_system_extraction.md`](https://github.com/merely-made/mere/blob/main/design_docs/mere_docs/technical_architecture/2026-05-30_field_system_extraction.md) (in Mere).

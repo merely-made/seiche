@@ -5,7 +5,7 @@ version = "0.0.1"
 edition = "2024"
 license.workspace = true
 description = "The rapier-free model of seiche's layout physics: node keys, collider and material data, scene specs, arrangement roles, field clock, edge topology and the position-only layout view. Everything a host reads or names without running the engine."
-repository = "https://github.com/merely-made/mere"
+repository = "https://github.com/merely-made/seiche"
 keywords = ["physics", "layout", "graph", "force-directed"]
 categories = ["graphics", "simulation"]
 

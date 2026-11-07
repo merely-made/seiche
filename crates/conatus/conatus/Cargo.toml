@@ -6,7 +6,7 @@ edition = "2024"
 rust-version = "1.97.1"
 license.workspace = true
 description = "Host-neutral 3D body, collision, query, and fixed-step runtime for Merely spatial applications and games."
-repository = "https://github.com/merely-made/mere"
+repository = "https://github.com/merely-made/seiche"
 keywords = ["game-engine", "physics", "voxel", "spatial", "simulation"]
 categories = ["game-engines", "simulation"]
 

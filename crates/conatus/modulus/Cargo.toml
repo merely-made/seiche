@@ -6,7 +6,7 @@ edition = "2024"
 rust-version = "1.97.1"
 license = "MPL-2.0"
 description = "Product-neutral sparse brick atlas ABI and WGSL voxel traversal for Merely spatial applications and games."
-repository = "https://github.com/merely-made/mere"
+repository = "https://github.com/merely-made/seiche"
 keywords = ["game-engine", "voxel", "wgsl", "spatial", "rendering"]
 categories = ["game-engines", "graphics", "rendering::data-formats"]
 

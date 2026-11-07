@@ -178,13 +178,17 @@ yet keeps rules 1 to 4 until its first statement is written.
    before the fields line.
 ## Local addendum — Seiche
 
-Seiche has no area roots yet. Mere kept no `conatus_docs/`, `seiche_docs/`,
-`numen_docs/` or physics root; the spatial plans and briefs sat in
-`mere_docs/` (the conatus engine plan, the dynamics grammar plan, the physics
-catalog plan and their research briefs), and none came across in the cut.
-Until one does, Seiche's documents live at the `design_docs/` root under
-core §4's flat layout, and a domain that gathers enough of them is promoted
-to an area root then.
+Seiche keeps one area root under `design_docs/`:
+
+- `seiche_docs/` — the spatial runtime: `crates/conatus/` (`numen`, `seiche`,
+  `seiche-model`, `conatus`, `nisus`, `modulus`, `tenant`).
+
+It was founded on 2026-11-07 with two documents moved from Mere's
+`mere_docs/` under the engine split plan's D25: the conatus engine plan and
+the conatus and Nexus alignment brief. Mere's dynamics grammar plan and
+physics catalog plan stay in Mere, because their subjects span Mere's canvas
+as well as this runtime; paths into them, and into Mere's `archive_docs/`, are
+Mere's `design_docs/` (core §5).
 
 Receipts go to `design_docs/archive_docs/receipts/`, one file per plan under
 core §4.
@@ -193,5 +197,5 @@ Decisions follow core §11: a plan's decision takes `<plan keyword> D<n>`, the
 keyword from the plan's file name.
 
 This repository was cut from Mere on 2026-11-07 under Mere's
-`2026-11-07_engine_split_plan.md` (P2; D5, D6, D12), at Mere revision
+`2026-11-07_engine_split_plan.md` (P2; D5, D6, D12, D25), at Mere revision
 `4fa1686da`. History before a path reached its Mere location is not here.
