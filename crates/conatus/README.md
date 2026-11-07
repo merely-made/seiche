@@ -9,6 +9,7 @@ workspace.
 |---|---|---|
 | [`numen`](numen) | Field truth and evaluation: `ScalarField` / `VectorField`, `Field`, `Coupling`, `EdgePath`, `FieldRegistry`, `FieldProjection`, analytic evaluation, plus opt-in Rhai and Burn lowering. | serde, uuid, strum, optional burn + rhai |
 | [`seiche`](seiche) | Force integration and laws: a Rapier `Simulation`, built-in layout forces, tensorized repulsion, field couplings, scenes, fluid. | rapier2d, petgraph, numen, euclid, tracing, optional burn |
+| [`seiche-model`](seiche-model) | The rapier-free model of seiche: `NodeKey`, `NodeCollider` and `NodeMaterial`, scene specs, arrangement roles, `FieldClock`, `EdgeTopology`, the fluid data and the position-only `LayoutView` and `LayoutSnapshot`. `seiche` re-exports all of it under its old paths. Split out 2026-11-07 (Graphshell host plan T7, the lazy physics Worker). | petgraph, euclid, optional serde |
 | [`conatus`](conatus) | Host-neutral 3D body, collision, query, and fixed-step runtime. Its opt-in `resident` module owns `ResidentChunk`, CubeCL allocation, and the device-resident spatial lane. | nisus, rapier3d, serde, optional burn + wgpu + cubecl |
 | [`nisus`](nisus) | Generic revisioned voxel chunk and edit mechanics — the *nisus formativus*, the striving by which the world's matter takes and re-takes shape; consumed by Mesocosm's `GroundVoxelProfile` as the disposable view beside its record. Renamed from `conatus-voxel` and claimed on crates.io 2026-08-28. | serde |
 | [`modulus`](modulus) | Product-neutral sparse-brick presentation ABI: deterministic `BrickMap`, `BrickTraceSpace`, the camera-neutral `BRICK_DDA_WGSL`, and a capacity-fixed retargeting mode. Camera, appearance, and composition stay in product lenses. | bytemuck |
@@ -31,7 +32,7 @@ intermediates are the wrong shape. The device is always the host's:
 Conatus never boots one, because a second device on the same adapter
 cannot share a buffer with the renderer.
 
-Dependency direction is numen to seiche on the field side, with Conatus
+Dependency direction is numen to seiche on the field side, seiche-model beneath seiche, with Conatus
 resident state adjacent to its spatial runtime, and nisus to conatus on the
 runtime side. Each crate publishes under its
 own name and stays independent of any graph kernel or renderer. All of them

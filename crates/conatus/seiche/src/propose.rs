@@ -52,7 +52,7 @@ impl Simulation {
             .iter()
             .filter_map(|(&id, &(scene_handle, ref collider))| {
                 let scene_body = self.bodies.get(scene_handle)?;
-                let shape = collider.to_shared_shape();
+                let shape = crate::node_body::shared_shape(&collider);
                 shape
                     .contains_point(scene_body.position(), centre)
                     .then_some(id)

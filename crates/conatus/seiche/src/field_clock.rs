@@ -5,24 +5,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! Accepted simulation time, separate from lagged-result step age (F203).
+pub use seiche_model::field_clock::FieldClock;
+
 use crate::{NodeKey, Simulation};
 use euclid::default::Point2D;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct FieldClock {
-    /// Sum of accepted tick intervals, before the tick when in a force context.
-    pub elapsed: f64,
-    /// Reset generation; does not rewind the solver's monotonic step counter.
-    pub epoch: u64,
-    pub paused: bool,
-}
-impl FieldClock {
-    /// Numen's AST uses f32. Accumulation uses f64; traces retain the actual
-    /// f32 sample time as well as this accumulated clock state.
-    pub fn sample_time(self) -> f32 {
-        self.elapsed as f32
-    }
-}
 impl Simulation {
     pub fn set_field_clock_paused(&mut self, paused: bool) {
         self.field_clock.paused = paused;

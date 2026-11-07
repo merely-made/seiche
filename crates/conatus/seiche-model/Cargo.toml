@@ -1,0 +1,26 @@
+[package]
+rust-version = "1.97.1"
+name = "seiche-model"
+version = "0.0.1"
+edition = "2024"
+license.workspace = true
+description = "The rapier-free model of seiche's layout physics: node keys, collider and material data, scene specs, arrangement roles, field clock, edge topology and the position-only layout view. Everything a host reads or names without running the engine."
+repository = "https://github.com/merely-made/mere"
+keywords = ["physics", "layout", "graph", "force-directed"]
+categories = ["graphics", "simulation"]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# NodeKey is petgraph's stable node index, as in seiche.
+petgraph = "0.8"
+euclid = "0.22"
+# Role's wire form (seiche's `serde` feature forwards here).
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde"]
+
+[lints]
+workspace = true

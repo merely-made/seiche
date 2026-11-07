@@ -48,7 +48,7 @@ impl Simulation {
             .angular_damping(DEFAULT_ANGULAR_DAMPING)
             .build();
         let handle = self.bodies.insert(body);
-        let shape = collider.to_shared_shape();
+        let shape = crate::node_body::shared_shape(&collider);
         let c = ColliderBuilder::new(shape)
             .density(NODE_BODY_DENSITY)
             .restitution(0.6)
@@ -172,7 +172,7 @@ impl Simulation {
                 .gravity_scale(b.gravity_scale)
                 .build();
             let handle = self.bodies.insert(body);
-            let shape = b.collider.to_shared_shape();
+            let shape = crate::node_body::shared_shape(&b.collider);
             let c = ColliderBuilder::new(shape)
                 .density(NODE_BODY_DENSITY)
                 .restitution(b.restitution)

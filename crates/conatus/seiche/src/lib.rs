@@ -58,12 +58,11 @@ use euclid::default::{Box2D, Point2D};
 use rapier2d::prelude::*;
 
 /// The opaque identifier seiche binds a body to: petgraph's stable node index, the
-/// same type mere's kernel and chartulary use as `NodeKey`. A consumer supplies its
-/// own keys (from any graph, or minted directly); seiche never inspects them.
-pub type NodeKey = petgraph::stable_graph::NodeIndex;
+/// same type mere's kernel and chartulary use as `NodeKey`. Defined in `seiche-model`.
+pub use seiche_model::NodeKey;
 
-mod edge_topology;
-pub use edge_topology::{EdgeIter, EdgeRun, EdgeTopology};
+pub use seiche_model::edge_topology;
+pub use seiche_model::{EdgeIter, EdgeRun, EdgeTopology};
 
 /// Where a [`Simulation`] ticks: the inline / actor backend a host drives
 /// instead of owning a frame loop and a settle budget of its own. (Lifted out
@@ -89,7 +88,7 @@ pub use terms::{
 /// weighted sum, groups, and the observables their receipts read.
 pub mod compose;
 pub mod grouped;
-pub mod observe;
+pub use seiche_model::observe;
 pub mod scale;
 /// The dynamics spec: a live layout's drive as portable data (G4).
 pub mod spec;
@@ -186,8 +185,8 @@ pub use settle::{DynamicsRunner, SettleEnd, SettleError, SettleReport, settle};
 /// Position-Based Fluids (PBF): our own small SPH liquid for the orrery (salva lags rapier badly,
 /// so we roll our own). The solver lives here; its seam onto the rigid world (loading + the two-way
 /// coupling) is [`Simulation`]'s fluid tier in [`fluid_coupling`]. (Physics scenes P4c.)
-pub mod fluid;
-pub use fluid::{Basin, ContactShape, Fluid, FluidContact, FluidParams};
+pub use seiche_model::fluid;
+pub use seiche_model::{Basin, ContactShape, Fluid, FluidContact, FluidParams};
 
 /// The declarative scene library: ready-made [`SceneSpec`]s the orrery loads behind the
 /// graph (drop-bowl, pyramid, dominoes, Galton board, funnel, drift, chain, whirlpool, fountain).
@@ -202,8 +201,8 @@ pub use scenes::{
 /// The declarative scene **format**: the data types a [`SceneSpec`] is built from (bodies,
 /// joints, world settings). Split from `lib.rs` because the format grows independently of the
 /// simulation core. (Physics scenes P4b.)
-mod scene_spec;
-pub use scene_spec::{
+use seiche_model::scene_spec;
+pub use seiche_model::{
     JointMotorSpec, SceneBodyId, SceneBodySpec, SceneBodyType, SceneEmitter, SceneField,
     SceneJoint, SceneJointSpec, SceneSpec,
 };
@@ -212,8 +211,8 @@ pub use scene_spec::{
 /// ([`NodeMaterial`]), and the [`Simulation`] methods that re-apply each to live bodies. (Node-rep.)
 mod node_body;
 mod obstacles;
-pub use node_body::{NodeCollider, NodeMaterial};
 pub use obstacles::StaticObstacle;
+pub use seiche_model::{NodeCollider, NodeMaterial};
 
 /// The **sieve**: collision predicates as data — nodes carry [`Kinds`], a sieve scene body
 /// blocks the kinds it names and passes the rest, computed by rapier's interaction groups
@@ -241,6 +240,7 @@ mod fluid_coupling;
 /// The force-**field** tier on [`Simulation`] (a whirlpool / well) plus the actor's keep-ticking
 /// predicate [`Simulation::wants_continuous_tick`].
 mod field;
+pub use field::SceneFieldTerms;
 
 /// Continuous body **emitters** (fountains / streams) on [`Simulation`].
 mod emitter;
@@ -254,22 +254,10 @@ mod query;
 /// The rapier-free read model — a position-only [`LayoutView`] the host renders
 /// and hit-tests from, plus the [`LayoutSnapshot`] a physics actor emits to
 /// refresh it. The seam that lets the simulation run off the UI thread.
-mod view;
-pub use view::{LayoutSnapshot, LayoutView, RectSelection, SceneBodyView};
+pub use seiche_model::view;
+pub use seiche_model::{LayoutSnapshot, LayoutView, RectSelection, SceneBodyView};
 
-/// Physical radius used for every node body's collider.
-///
-/// Mirrors `platen::CanvasSceneOptions::default()`'s
-/// `default_node_radius` so simulation-driven separation matches
-/// the renderer's drawn radius. When per-node radii become a real
-/// thing, this constant will get replaced by a per-node lookup.
-pub const NODE_BODY_RADIUS: f32 = 18.0;
-
-/// Density for node-body colliders, chosen so each node's mass is ~= 1.0
-/// (mass = density * pi * r^2 ~= 0.001 * pi * 18^2 ~= 1.0). The layout forces in
-/// [`forces`] are then intuitive accelerations rather than being swamped by the
-/// large mass a default density would give an 18px ball.
-pub const NODE_BODY_DENSITY: f32 = 0.001;
+pub use seiche_model::{NODE_BODY_DENSITY, NODE_BODY_RADIUS};
 
 /// Linear damping applied to every node body. Tuned for a slippery,
 /// inertial feel: a released node coasts a moment before settling, rather
@@ -577,6 +565,12 @@ const _: fn() = || {
 // physics through `sync_nodes` / `sync_edges`, not a mere `Graph`).
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod edge_topology_tests;
+
+#[cfg(test)]
+mod view_tests;
 
 /// The lagged seam's receipts on evaluators whose timing the test controls.
 #[cfg(test)]
