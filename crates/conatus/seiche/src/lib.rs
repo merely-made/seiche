@@ -264,6 +264,9 @@ pub use seiche_model::{
     DENSITY_ADMITS, DENSITY_REFUSAL, OverlayRefusal, PhysicsDepthSource, PhysicsKindSource,
     PhysicsLaw, PhysicsMassSource, PhysicsOverlay,
 };
+pub use seiche_model::{
+    CHARGE_BETWEEN_WEIGHT, CompositionRefusal, GroupSource, PhysicsComposition, PhysicsGrouping,
+};
 pub use seiche_model::{NODE_BODY_DENSITY, NODE_BODY_RADIUS};
 
 /// Linear damping applied to every node body. Tuned for a slippery,
