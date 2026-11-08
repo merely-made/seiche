@@ -183,7 +183,7 @@ impl Simulation {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
 

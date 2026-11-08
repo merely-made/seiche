@@ -30,13 +30,16 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{
-    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NODE_BODY_RADIUS,
-    NodeKey, Observable, State, Term, Topology,
-};
+use crate::{Class, Currency, Declared, Force, Kernel, Layout, Metric, NODE_BODY_RADIUS, NodeKey, Observable, State, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
+#[cfg(feature = "engine")]
 use super::node_positions;
 
 mod grid;
@@ -339,6 +342,7 @@ impl PassMotion {
 }
 
 impl Force for Density {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         // A kinematic law: other terms' forces enter converted, once Density
         // takes any (G3).
@@ -513,5 +517,5 @@ impl Declared for Density {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

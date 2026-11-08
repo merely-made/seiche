@@ -20,14 +20,18 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{
-    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable,
-    State, Term, Topology,
-};
+use crate::{Class, Currency, Declared, Force, Kernel, Layout, Metric, NodeKey, Observable, State, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
-use super::{degrees, node_positions};
+use super::{degrees};
+#[cfg(feature = "engine")]
+use super::{node_positions};
 
 /// Kuramoto oscillators on a ring.
 #[derive(Debug)]
@@ -78,6 +82,7 @@ impl Kuramoto {
 }
 
 impl Force for Kuramoto {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         let nodes = node_positions(ctx);
         let degree = degrees(ctx.edges);
@@ -214,7 +219,7 @@ impl Declared for Kuramoto {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;
@@ -248,6 +253,7 @@ mod tests {
         // Share the law so the test can read phases after the run.
         struct Shared(std::sync::Arc<Kuramoto>);
         impl Force for Shared {
+            #[cfg(feature = "engine")]
             fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
                 self.0.apply(ctx, dt);
             }
@@ -301,6 +307,7 @@ mod tests {
         let law = std::sync::Arc::new(Kuramoto::new(std::iter::empty()));
         struct Shared(std::sync::Arc<Kuramoto>);
         impl Force for Shared {
+            #[cfg(feature = "engine")]
             fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
                 self.0.apply(ctx, dt);
             }

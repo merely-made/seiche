@@ -17,14 +17,18 @@
 
 use std::sync::Mutex;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{
-    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, State,
-    Term, Topology,
-};
+use crate::{Class, Currency, Declared, Force, Kernel, Layout, NodeKey, Observable, State, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
-use super::{Rng, node_positions};
+use super::{Rng};
+#[cfg(feature = "engine")]
+use super::{node_positions};
 
 /// Simulated annealing on a layout energy.
 #[derive(Debug)]
@@ -117,6 +121,7 @@ impl Anneal {
 }
 
 impl Force for Anneal {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         // A kinematic law: other terms' forces enter converted (G3).
         super::convert_forces(ctx);
@@ -198,7 +203,7 @@ impl Declared for Anneal {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

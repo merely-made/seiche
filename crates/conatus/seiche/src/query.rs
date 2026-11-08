@@ -73,7 +73,7 @@ impl Simulation {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use euclid::default::{Box2D, Point2D};
 

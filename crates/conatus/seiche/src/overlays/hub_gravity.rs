@@ -14,14 +14,18 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::laws::{degrees, node_positions};
+use crate::laws::{degrees};
+#[cfg(feature = "engine")]
+use crate::laws::{node_positions};
 use crate::terms::floored_log;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable, Term,
-    Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, Metric, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Clone, Debug)]
 pub struct HubGravity {
@@ -54,6 +58,7 @@ impl HubGravity {
 }
 
 impl Force for HubGravity {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let weights: Vec<f32> = match &self.weights {
@@ -151,7 +156,7 @@ impl Declared for HubGravity {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Boundary, EdgeSpring, NodeExclusion, Simulation};

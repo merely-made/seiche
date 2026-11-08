@@ -52,7 +52,7 @@
 
 #![doc(html_root_url = "https://docs.rs/seiche/0.0.1")]
 // Without the engine the pace and cache internals have no driver in this crate.
-#![cfg_attr(not(feature = "engine"), allow(dead_code))]
+#![cfg_attr(not(feature = "engine"), allow(dead_code, unused_imports))]
 
 #[cfg(feature = "engine")]
 use std::collections::HashMap;
@@ -88,80 +88,60 @@ pub use seiche_model::{DataCommand, ForceSetDescriptor, LawInputsData};
 
 /// What each force is, term by term (topology, kernel, state, currency,
 /// class, metric, observable), and the instruments that check it.
-#[cfg(feature = "engine")]
 pub mod instruments;
-#[cfg(feature = "engine")]
 pub mod terms;
+pub mod vector;
 pub use seiche_model::terms::{
     Class, Currency, Kernel, Metric, Observable, State, Term, Topology,
 };
-#[cfg(feature = "engine")]
 pub use terms::{Declared, Layout};
 
 /// The combinators (dynamics grammar plan, G3): composition by currency, the
 /// weighted sum, groups, and the observables their receipts read.
-#[cfg(feature = "engine")]
 pub mod compose;
-#[cfg(feature = "engine")]
 pub mod grouped;
 pub use seiche_model::observe;
-#[cfg(feature = "engine")]
 pub mod scale;
 /// The dynamics spec: a live layout's drive as portable data (G4).
-#[cfg(feature = "engine")]
 pub mod spec;
-#[cfg(feature = "engine")]
 pub mod weighted;
-#[cfg(feature = "engine")]
 pub use compose::Admission;
-#[cfg(feature = "engine")]
-pub use grouped::{Grouped, Partition, Spread};
-#[cfg(feature = "engine")]
+pub use grouped::{Partition, Spread};
+pub use grouped::{Grouped};
 pub use spec::{DynamicsSpec, SpecCatalog, SpecError};
-#[cfg(feature = "engine")]
 pub use weighted::Weighted;
 
 /// Built-in force forces for the force-directed orrery layout.
-#[cfg(feature = "engine")]
 pub mod forces;
-#[cfg(feature = "engine")]
 pub use forces::{Boundary, EdgeSpring, NodeExclusion};
 
 /// The physics catalog's **laws**: distinct dynamics over the node bodies,
 /// each a [`Force`] a host installs through [`Simulation::set_forces`].
 /// Springs (the trio above), Charge ([`BarnesHutRepulsion`] + springs) and
 /// Still (no forces) need nothing here; the rest are their own files.
-#[cfg(feature = "engine")]
 pub mod laws;
-#[cfg(feature = "engine")]
 pub mod overlays;
 /// The catalog's engine half: the graph algorithms its sources read, and (as the
 /// descriptor step lands) the builders from a law, overlays and inputs to forces.
 pub mod catalog;
-#[cfg(feature = "engine")]
 pub use laws::{
     Anneal, Boids, CounterDamping, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold,
     Kuramoto, LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
 };
-#[cfg(feature = "engine")]
 pub use overlays::{
     DegreeRepulsion, DepthGravity, DomainCluster, GravityLocus, GridSnap, HubGravity,
 };
 
 /// Tensorized N-body force laws. Burn stays opt-in behind `tensor-burn` so
 /// ordinary layout consumers do not acquire the GPU/runtime stack.
-#[cfg(feature = "engine")]
 pub mod tensor_forces;
-#[cfg(feature = "engine")]
 pub use tensor_forces::{
     NodeExclusionParams, RepulsionInputError, RepulsionParams, node_exclusion_reference,
     repulsion_reference,
 };
 #[cfg(feature = "tensor-burn")]
-#[cfg(feature = "engine")]
 pub use tensor_forces::{node_exclusion, repulsion};
 #[cfg(feature = "tensor-burn-wgpu")]
-#[cfg(feature = "engine")]
 pub use tensor_forces::{node_exclusion_wgpu_roundtrip, repulsion_wgpu_roundtrip};
 
 /// The lagged seam: a pairwise law evaluated elsewhere (the host's GPU) and
@@ -182,9 +162,7 @@ pub mod gpu;
 /// [`barnes_hut::repulsion_forces`] primitive is ready; wiring it as a live
 /// [`Force`] is a tuning step (it would supplement [`NodeExclusion`]'s local
 /// separation with global spreading).
-#[cfg(feature = "engine")]
 pub mod barnes_hut;
-#[cfg(feature = "engine")]
 pub use barnes_hut::{BarnesHutConfig, BarnesHutRepulsion, repulsion_forces};
 
 /// The aether→seiche seam: a [`numen::Coupling`] compiled to a
@@ -376,8 +354,8 @@ fn scene_groups() -> InteractionGroups {
 ///
 /// Every force is [`Declared`]: it says what terms it applies, so a catalog
 /// reads its class and currency rather than restating them.
-#[cfg(feature = "engine")]
 pub trait Force: Declared + Send {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32);
 
     /// Whether the force has motion of its own still to run, so the host

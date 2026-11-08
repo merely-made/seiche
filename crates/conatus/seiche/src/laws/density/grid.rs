@@ -6,7 +6,10 @@
 
 //! Density's CPU tier: the walled grid the nodes' field lives on.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use super::{DensityDomain, DensityMedium};
 

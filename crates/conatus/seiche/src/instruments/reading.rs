@@ -8,10 +8,13 @@
 //! what each declared class predicts of them. Split from the instruments
 //! themselves to keep both files under the workspace's size ceiling.
 
-use super::{
-    Probe, Vector, balance, descent, gradient_error, isolated, jacobian_asymmetry, loop_work,
-    persistent_motion, velocity_read,
-};
+use super::{isolated};
+#[cfg(feature = "engine")]
+use super::{balance, descent, gradient_error, jacobian_asymmetry, loop_work, persistent_motion, velocity_read};
+#[cfg(feature = "engine")]
+use super::{Probe};
+#[cfg(feature = "engine")]
+use super::{Vector};
 use crate::Force;
 
 /// Tolerances, each a fraction of the instrument's own scale.
@@ -78,6 +81,7 @@ pub fn median(values: &[f64]) -> f64 {
 /// Read term `term` of the force `make` builds, at each of `starts`. `make`
 /// is called afresh wherever a reading would otherwise inherit state (a
 /// clock, a phase, a kick).
+#[cfg(feature = "engine")]
 pub fn read(
     probe: &mut Probe,
     make: &dyn Fn() -> Box<dyn Force>,

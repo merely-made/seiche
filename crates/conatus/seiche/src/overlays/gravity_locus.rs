@@ -16,11 +16,17 @@
 
 use std::sync::Mutex;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
+#[cfg(feature = "engine")]
 use crate::laws::node_positions;
 use crate::terms::harmonic;
-use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
+use crate::{Class, Declared, Force, Kernel, Layout, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Debug)]
 pub struct GravityLocus {
@@ -68,6 +74,7 @@ impl GravityLocus {
 }
 
 impl Force for GravityLocus {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         {
             let mut clock = self
@@ -136,7 +143,7 @@ impl Declared for GravityLocus {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{NodeKey, Simulation};

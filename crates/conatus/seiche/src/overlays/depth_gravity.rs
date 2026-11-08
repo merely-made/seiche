@@ -14,13 +14,17 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
+#[cfg(feature = "engine")]
 use crate::laws::node_positions;
 use crate::terms::harmonic;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Clone, Debug)]
 pub struct DepthGravity {
@@ -45,6 +49,7 @@ impl DepthGravity {
 }
 
 impl Force for DepthGravity {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let axis = {
             let d = Vector::new(self.direction.0, self.direction.1);
@@ -110,7 +115,7 @@ impl Declared for DepthGravity {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Boundary, EdgeSpring, NodeExclusion, Simulation};

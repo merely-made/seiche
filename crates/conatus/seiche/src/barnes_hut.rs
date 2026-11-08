@@ -23,9 +23,14 @@
 //! and which role Barnes-Hut plays in the orrery is a tuning decision.
 
 use euclid::default::{Point2D, Vector2D};
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
+use crate::{Class, Declared, Force, Kernel, Layout, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 /// Barnes–Hut approximation tuning.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -106,6 +111,7 @@ impl Default for BarnesHutRepulsion {
 }
 
 impl Force for BarnesHutRepulsion {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         // Snapshot bodies in key order, then build the tree over the positions
         // and apply each body's approximated repulsion. Key order makes the
@@ -393,7 +399,7 @@ impl Quadtree {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
 

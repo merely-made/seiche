@@ -14,12 +14,16 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
+#[cfg(feature = "engine")]
 use crate::laws::node_positions;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Clone, Debug)]
 pub struct DomainCluster {
@@ -44,6 +48,7 @@ impl DomainCluster {
 }
 
 impl Force for DomainCluster {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let mut sums: HashMap<u32, (Vector, f32)> = HashMap::new();
@@ -120,7 +125,7 @@ impl Declared for DomainCluster {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Boundary, EdgeSpring, NodeExclusion, Simulation};

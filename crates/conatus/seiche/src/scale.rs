@@ -140,5 +140,5 @@ pub fn stiffness_at_stretch(weight: f64, rest: f32) -> f32 {
     (weight / f64::from(rest)) as f32
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

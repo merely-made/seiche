@@ -29,12 +29,19 @@
 //! edges near Springs' rest length, and still twice as separated, for their
 //! size, as Springs leaves them.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::floored_log;
-use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
+use crate::{Class, Declared, Force, Kernel, Layout, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
-use super::{degrees, node_positions};
+use super::{degrees};
+#[cfg(feature = "engine")]
+use super::{node_positions};
 
 /// ForceAtlas2's attraction and repulsion, degree-weighted by default, with
 /// the attraction exponent a parameter (LinLog at `0.0`).
@@ -72,6 +79,7 @@ impl Default for LinLogForce {
 }
 
 impl Force for LinLogForce {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let degree = degrees(ctx.edges);
@@ -276,7 +284,7 @@ impl Declared for LinLogForce {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Boundary, EdgeSpring, NodeExclusion, NodeKey, Simulation};

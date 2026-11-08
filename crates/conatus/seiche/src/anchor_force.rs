@@ -179,7 +179,7 @@ impl Declared for AnchorSpring {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
 

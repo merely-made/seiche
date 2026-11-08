@@ -10,11 +10,17 @@
 //! so the picture settles onto cells while the law still decides which
 //! cell. The donor's `GridSnap` extra (its crystal preset), over any law.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
+#[cfg(feature = "engine")]
 use crate::laws::node_positions;
 use crate::terms::harmonic;
-use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
+use crate::{Class, Declared, Force, Kernel, Layout, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridSnap {
@@ -34,6 +40,7 @@ impl Default for GridSnap {
 }
 
 impl Force for GridSnap {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let cell = self.cell.max(1.0);
         for (_, handle, position) in node_positions(ctx) {
@@ -85,7 +92,7 @@ impl Declared for GridSnap {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{NodeKey, Simulation};

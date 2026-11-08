@@ -18,13 +18,16 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{
-    Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable,
-    State, Term, Topology,
-};
+use crate::{Class, Currency, Declared, Force, Kernel, Layout, Metric, NodeKey, Observable, State, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
+#[cfg(feature = "engine")]
 use super::node_positions;
 
 /// How [`Gravity`] meets the host's linear damping (the "inertia" setting).
@@ -96,6 +99,7 @@ impl Gravity {
 }
 
 impl Force for Gravity {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         if nodes.is_empty() {
@@ -300,10 +304,10 @@ impl Declared for Gravity {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod diag;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

@@ -14,16 +14,20 @@
 //! nothing to spread the bodies gently first, as every other law's
 //! repulsion does. Held, a contact can only nudge, one step at a time.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{
-    Class, Currency, Declared, Force, ForceContext, Kernel, Observable, State, Term, Topology,
-};
+use crate::{Class, Currency, Declared, Force, Kernel, Observable, State, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Hold;
 
 impl Force for Hold {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         for &handle in ctx.bodies_by_node.values() {
             if let Some(body) = ctx.bodies.get_mut(handle) {
@@ -51,7 +55,7 @@ impl Declared for Hold {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{NodeKey, Simulation};

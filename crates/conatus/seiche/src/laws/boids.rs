@@ -15,14 +15,17 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::harmonic;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, Metric, NodeKey, Observable, Term,
-    Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, Metric, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
+#[cfg(feature = "engine")]
 use super::node_positions;
 
 /// Boids with edge-neighbours as flockmates.
@@ -58,6 +61,7 @@ impl Default for Boids {
 }
 
 impl Force for Boids {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let velocities: Vec<Vector> = nodes
@@ -310,7 +314,7 @@ impl Declared for Boids {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

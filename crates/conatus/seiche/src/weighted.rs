@@ -15,9 +15,14 @@
 //! scaled. A weight scales force, so a force that writes state is refused
 //! ([`crate::compose::UNWEIGHTED`]).
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{Currency, Declared, Force, ForceContext, Layout, Term, compose};
+use crate::{Currency, Declared, Force, Layout, Term, compose};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 pub struct Weighted {
     inner: Box<dyn Force>,
@@ -42,6 +47,7 @@ impl Weighted {
 }
 
 impl Force for Weighted {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         if self.factor == 0.0 {
             return;

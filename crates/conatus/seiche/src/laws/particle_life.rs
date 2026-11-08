@@ -21,14 +21,19 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::harmonic;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
-use super::{Rng, node_positions};
+use super::{Rng};
+#[cfg(feature = "engine")]
+use super::{node_positions};
 
 /// Particle life: kinds attract or repel by an asymmetric matrix.
 #[derive(Clone, Debug)]
@@ -125,6 +130,7 @@ impl ParticleLife {
 }
 
 impl Force for ParticleLife {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let kinds: Vec<u8> = nodes
@@ -256,7 +262,7 @@ impl Declared for ParticleLife {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

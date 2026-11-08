@@ -23,22 +23,31 @@
 //! Plan: `design_docs/archive_docs/2026-10-28/2026-10-02_dynamics_grammar_plan.md`, G1.
 
 use euclid::default::Point2D;
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::laws::Rng;
-use crate::{Force, ForceContext, Layout, NodeKey, Simulation};
+use crate::{Force, Layout, NodeKey};
+#[cfg(feature = "engine")]
+use crate::{ForceContext, Simulation};
 
 /// The position and force type the instruments take: rapier's.
+#[cfg(feature = "engine")]
 pub use rapier2d::prelude::Vector;
 
 /// A fixture's bodies and edges with no other force, read one force at a time.
+#[cfg(feature = "engine")]
 pub struct Probe {
     sim: Simulation,
     keys: Vec<NodeKey>,
     velocities: Vec<Vector>,
 }
 
+#[cfg(feature = "engine")]
 impl Probe {
+    #[cfg(feature = "engine")]
     pub fn new(nodes: &[NodeKey], edges: &[(NodeKey, NodeKey)]) -> Self {
         let mut keys = nodes.to_vec();
         keys.sort_by_key(|key| key.index());
@@ -74,11 +83,13 @@ impl Probe {
             .collect()
     }
 
+    #[cfg(feature = "engine")]
     fn handle(&self, i: usize) -> Option<RigidBodyHandle> {
         self.sim.bodies_by_node.get(&self.keys[i]).copied()
     }
 
     /// Put every body at `positions` (in node-key order), at rest.
+    #[cfg(feature = "engine")]
     pub fn place(&mut self, positions: &[Vector]) {
         self.velocities = vec![Vector::ZERO; self.len()];
         for (i, &p) in positions.iter().enumerate().take(self.len()) {
@@ -90,6 +101,7 @@ impl Probe {
         }
     }
 
+    #[cfg(feature = "engine")]
     pub fn positions(&self) -> Vec<Vector> {
         (0..self.len())
             .map(|i| {
@@ -107,6 +119,7 @@ impl Probe {
     /// `force`'s push on each body at the current positions, read with
     /// `dt = 0` so no clock or phase advances, the bodies at the probe's
     /// velocities (rest unless [`velocity_read`] set them).
+    #[cfg(feature = "engine")]
     pub fn forces(&mut self, force: &dyn Force) -> Vec<Vector> {
         for i in 0..self.len() {
             let v = self.velocities[i];
@@ -193,6 +206,7 @@ impl Descent {
 /// Run `x ← x + h·F(x)` from `start` for `steps`, `h` chosen so no body
 /// moves more than `step` world units, and record term `term`'s energy.
 /// `None` for a term with no energy.
+#[cfg(feature = "engine")]
 pub fn descent(
     probe: &mut Probe,
     force: &dyn Force,
@@ -231,6 +245,7 @@ pub fn descent(
 
 /// `‖M·F + ∇U‖ / ‖∇U‖` at `at`, the gradient by central differences of `h`
 /// and `M` the term's metric. `None` for a term with no energy.
+#[cfg(feature = "engine")]
 pub fn gradient_error(
     probe: &mut Probe,
     force: &dyn Force,
@@ -280,6 +295,7 @@ impl Balance {
 }
 
 /// `Σ wᵢFᵢ` at `at`: zero for a pair term reciprocal in the metric `w`.
+#[cfg(feature = "engine")]
 pub fn balance(probe: &mut Probe, force: &dyn Force, weights: &[f64], at: &[Vector]) -> Balance {
     probe.place(at);
     let f = probe.forces(force);
@@ -299,6 +315,7 @@ pub fn balance(probe: &mut Probe, force: &dyn Force, weights: &[f64], at: &[Vect
 /// with `A` and `B` seeded displacements of every body, as a fraction of the
 /// absolute work `∮ Σ |wᵢFᵢ·ẋᵢ| dt`. A gradient in the metric `w` does no
 /// net work around any closed loop, whatever kinks its energy has.
+#[cfg(feature = "engine")]
 pub fn loop_work(
     probe: &mut Probe,
     force: &dyn Force,
@@ -337,6 +354,7 @@ pub fn loop_work(
 
 /// `‖A‖ / ‖J̃‖` at `at`, for `J̃ = M·∂F/∂x` by central differences of `h`
 /// and `A` its antisymmetric part: zero for a gradient in the metric.
+#[cfg(feature = "engine")]
 pub fn jacobian_asymmetry(
     probe: &mut Probe,
     force: &dyn Force,
@@ -394,6 +412,7 @@ impl Motion {
 /// Tick the probe's world under `force` alone (rapier, its damping and
 /// contacts) for `ticks` at 60 Hz from `start`: a conservative term with
 /// damping comes to rest, a driven or non-conservative one may not.
+#[cfg(feature = "engine")]
 pub fn persistent_motion(
     probe: &mut Probe,
     force: Box<dyn Force>,
@@ -421,6 +440,7 @@ pub fn persistent_motion(
 
 /// `‖F(x, v) − F(x, 0)‖ / (‖F(x, 0)‖ + ‖F(x, v)‖)` with `v` seeded at
 /// `speed`: zero for a force that reads positions only.
+#[cfg(feature = "engine")]
 pub fn velocity_read(
     probe: &mut Probe,
     force: &dyn Force,
@@ -463,7 +483,9 @@ fn set_component(v: &mut Vector, axis: usize, value: f32) {
 
 /// Every instrument's reading of one term, and what each class predicts.
 mod reading;
-pub use reading::{Candidate, Reading, median, read, tolerance};
+pub use reading::{Candidate, Reading, median, tolerance};
+#[cfg(feature = "engine")]
+pub use reading::{read};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

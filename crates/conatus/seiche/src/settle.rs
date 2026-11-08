@@ -108,7 +108,7 @@ pub fn settle<R: DynamicsRunner>(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
 

@@ -19,13 +19,17 @@
 
 use std::collections::{HashMap, VecDeque};
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::spring;
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
+#[cfg(feature = "engine")]
 use super::node_positions;
 
 /// Pairwise springs at graph-distance rest lengths (Kamada–Kawai).
@@ -84,6 +88,7 @@ impl StressSpring {
 }
 
 impl Force for StressSpring {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let positions: HashMap<NodeKey, (RigidBodyHandle, Vector)> = node_positions(ctx)
             .into_iter()
@@ -198,7 +203,7 @@ pub fn graph_distances(
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

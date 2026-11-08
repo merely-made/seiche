@@ -25,15 +25,18 @@
 //! at Mere's world scale (1 unit ~= 1 px, node radius
 //! [`crate::NODE_BODY_RADIUS`]).
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::{floored_inverse, harmonic, spring};
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, Observable, RepulsionForces,
-    RepulsionRequest, RepulsionRoute, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext, RepulsionForces, RepulsionRequest, RepulsionRoute};
 
 /// Add a staged evaluator's forces to the bodies they were computed for.
+#[cfg(feature = "engine")]
 fn apply_forces(
     bodies: &mut RigidBodySet,
     nodes: &[(RigidBodyHandle, Vector)],
@@ -81,6 +84,7 @@ impl Default for NodeExclusion {
 }
 
 impl Force for NodeExclusion {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         // Snapshot every node's (handle, position) in key order before touching
         // forces: each body's sum then runs in the same order in every run, so
@@ -182,6 +186,7 @@ impl Default for EdgeSpring {
 }
 
 impl Force for EdgeSpring {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         for &(a, b) in ctx.edges {
             if a == b {
@@ -233,6 +238,7 @@ impl Default for Boundary {
 }
 
 impl Force for Boundary {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let handles: Vec<RigidBodyHandle> = ctx.bodies_by_node.values().copied().collect();
         for handle in handles {

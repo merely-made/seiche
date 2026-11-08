@@ -9,7 +9,7 @@
 use crate::{NODE_GROUP, Simulation, StaticObstacle};
 use rapier2d::prelude::*;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Kinds, NodeCollider, NodeKey};

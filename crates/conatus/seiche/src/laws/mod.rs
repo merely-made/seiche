@@ -65,9 +65,14 @@ pub use magnetic::MagneticSpring;
 pub use particle_life::ParticleLife;
 pub use stress::{StressSpring, graph_distances};
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{ForceContext, NodeKey};
+use crate::{NodeKey};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 /// Every node body's `(key, handle, position)`, in node-key order — the
 /// snapshot every law starts from, taken immutably before any force is
@@ -75,6 +80,7 @@ use crate::{ForceContext, NodeKey};
 /// random numbers per node (Anneal) or seeds by index (Boids, Sync) must
 /// visit nodes the same way in every process, or a seeded run is not
 /// reproducible.
+#[cfg(feature = "engine")]
 pub(crate) fn node_positions(ctx: &ForceContext<'_>) -> Vec<(NodeKey, RigidBodyHandle, Vector)> {
     let mut nodes: Vec<(NodeKey, RigidBodyHandle, Vector)> = ctx
         .bodies_by_node
@@ -93,6 +99,7 @@ pub(crate) fn node_positions(ctx: &ForceContext<'_>) -> Vec<(NodeKey, RigidBodyH
 /// plan, G3): every moving body starts the step at rest, so rapier
 /// integrates the accumulated force for one step from rest, `v = F/γ`, the
 /// rule Hold follows. Pinned (kinematic) bodies are the drag's and are left.
+#[cfg(feature = "engine")]
 pub(crate) fn convert_forces(ctx: &mut ForceContext<'_>) {
     for &handle in ctx.bodies_by_node.values() {
         if let Some(body) = ctx.bodies.get_mut(handle)

@@ -27,9 +27,14 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
-use crate::{Declared, Force, ForceContext, Layout, NodeKey, Term, Topology};
+use crate::{Declared, Force, Layout, NodeKey, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
 /// How a group's centroid force reaches its members.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,7 +134,12 @@ struct Laws {
     inner: Vec<Vec<Box<dyn Force>>>,
 }
 
+/// The centroid bodies the outer law runs over (the engine's; empty without it).
+#[cfg(not(feature = "engine"))]
+struct Centroids;
+
 /// The centroid bodies the outer law runs over.
+#[cfg(feature = "engine")]
 struct Centroids {
     bodies: RigidBodySet,
     colliders: ColliderSet,
@@ -163,22 +173,28 @@ impl Grouped {
         inner: Vec<Vec<Box<dyn Force>>>,
     ) -> Self {
         assert_eq!(inner.len(), partition.len(), "one inner law per group");
-        let mut bodies = RigidBodySet::new();
-        let by_group = (0..partition.len())
-            .map(|g| {
-                let handle = bodies.insert(RigidBodyBuilder::dynamic().build());
-                (NodeKey::new(g), handle)
-            })
-            .collect();
-        Self {
-            partition: Arc::new(partition),
-            laws: Arc::new(Mutex::new(Laws { outer, inner })),
-            centroids: Arc::new(Mutex::new(Centroids {
+        #[cfg(feature = "engine")]
+        let centroids = {
+            let mut bodies = RigidBodySet::new();
+            let by_group = (0..partition.len())
+                .map(|g| {
+                    let handle = bodies.insert(RigidBodyBuilder::dynamic().build());
+                    (NodeKey::new(g), handle)
+                })
+                .collect();
+            Centroids {
                 bodies,
                 colliders: ColliderSet::new(),
                 joints: ImpulseJointSet::new(),
                 by_group,
-            })),
+            }
+        };
+        #[cfg(not(feature = "engine"))]
+        let centroids = Centroids;
+        Self {
+            partition: Arc::new(partition),
+            laws: Arc::new(Mutex::new(Laws { outer, inner })),
+            centroids: Arc::new(Mutex::new(centroids)),
             spread: Spread::WeightShare,
             only: Only::All,
         }
@@ -199,6 +215,7 @@ impl Grouped {
     }
 
     /// Group `g`'s members present now, keyed to their bodies.
+    #[cfg(feature = "engine")]
     fn members(
         &self,
         g: usize,
@@ -212,6 +229,7 @@ impl Grouped {
             .collect()
     }
 
+    #[cfg(feature = "engine")]
     fn run_inner(
         &self,
         laws: &Laws,
@@ -238,6 +256,7 @@ impl Grouped {
         }
     }
 
+    #[cfg(feature = "engine")]
     fn run_outer(
         &self,
         laws: &Laws,
@@ -353,6 +372,7 @@ fn flat_terms(forces: &[Box<dyn Force>]) -> Vec<(usize, usize)> {
 }
 
 /// Apply every force, or only term `t` of force `f`.
+#[cfg(feature = "engine")]
 fn apply_terms(
     forces: &[Box<dyn Force>],
     ctx: &mut ForceContext<'_>,
@@ -373,6 +393,7 @@ fn apply_terms(
 }
 
 impl Force for Grouped {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         let laws = self.laws();
         match self.only {
@@ -480,5 +501,5 @@ impl Declared for Grouped {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

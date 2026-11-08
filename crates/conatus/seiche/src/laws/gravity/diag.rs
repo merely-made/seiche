@@ -28,7 +28,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use euclid::default::Point2D;
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use super::{CounterDamping, Gravity};
 use crate::{Boundary, Declared, Force, ForceContext, NodeExclusion, NodeKey, Simulation, TICK_DT};
@@ -149,6 +152,7 @@ impl Declared for Metered {
 }
 
 impl Force for Metered {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32) {
         let handles: Vec<RigidBodyHandle> = ctx.bodies_by_node.values().copied().collect();
         let before: Vec<(Vector, Vector, f32)> = handles
@@ -192,6 +196,7 @@ impl Declared for Snapshot {
 }
 
 impl Force for Snapshot {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let mut out = self.0.lock().unwrap();
         out.clear();
@@ -284,6 +289,7 @@ impl Declared for Brake {
 }
 
 impl Force for Brake {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = super::node_positions(ctx);
         let m: Vec<f32> = nodes
@@ -334,6 +340,7 @@ impl Declared for Tangential {
 }
 
 impl Force for Tangential {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = super::node_positions(ctx);
         let m: Vec<f32> = nodes
@@ -385,6 +392,7 @@ impl Declared for Cap {
 }
 
 impl Force for Cap {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let handles: Vec<RigidBodyHandle> = ctx.bodies_by_node.values().copied().collect();
         let energy: f32 = handles

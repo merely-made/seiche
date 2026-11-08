@@ -100,5 +100,5 @@ pub fn mix_refusal(laws: &[Currency]) -> Option<&'static str> {
         .then_some(UNWEIGHTED)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

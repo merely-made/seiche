@@ -16,13 +16,17 @@
 //! Direction is the synced edge tuple's order: `(a, b)` is `a → b`. A host
 //! whose edges are undirected gets a flow of whichever order it synced.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 use crate::terms::{floored_inverse, spring};
-use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
-};
+use crate::{Class, Declared, Force, Kernel, Layout, NodeKey, Observable, Term, Topology};
+#[cfg(feature = "engine")]
+use crate::{ForceContext};
 
+#[cfg(feature = "engine")]
 use super::node_positions;
 
 /// Springs torqued toward a field direction.
@@ -54,6 +58,7 @@ impl Default for MagneticSpring {
 }
 
 impl Force for MagneticSpring {
+    #[cfg(feature = "engine")]
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         let nodes = node_positions(ctx);
         let index: std::collections::HashMap<NodeKey, usize> = nodes
@@ -221,7 +226,7 @@ impl Declared for MagneticSpring {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::Simulation;

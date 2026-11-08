@@ -30,7 +30,10 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
+#[cfg(not(feature = "engine"))]
+use crate::vector::Vector;
 
 pub use seiche_model::terms::{
     CONTACTS, Class, Currency, DAMPING, Kernel, Metric, Observable, PIN, State, Term, Topology,

@@ -329,5 +329,5 @@ pub fn hop_distances(
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;
