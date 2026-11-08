@@ -9,56 +9,10 @@
 
 use std::time::Duration;
 
+pub use seiche_model::pace::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
+
 use super::speed::{self, Driver, TICK_UNITS};
 use super::{LayoutView, Physics, should_tick};
-
-/// The nominal 60 Hz interval, rounded to the nearest nanosecond. Each
-/// accepted interval still integrates with the existing [`TICK_DT`].
-pub const TICK_DURATION: Duration = Duration::from_nanos(16_666_667);
-
-/// Caller-selected limits for one inline advancement. Defaults follow the
-/// existing browser practice board's 50 ms catch-up cap. Zero limits are
-/// valid: no elapsed contribution or no steps, respectively. `max_steps` is
-/// given for real time and scales with the speed (rounded up).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ElapsedStepConfig {
-    pub max_elapsed: Duration,
-    pub max_steps: u32,
-}
-
-impl Default for ElapsedStepConfig {
-    fn default() -> Self {
-        Self {
-            max_elapsed: Duration::from_millis(50),
-            max_steps: 3,
-        }
-    }
-}
-
-/// Work performed by this host call. Actor-owned simulation reports zero
-/// steps and durations: its independent actor owns time and integration.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ElapsedStepReport {
-    pub steps: u32,
-    /// Time rejected by either cap, or while idle/halted. Includes a previous
-    /// carried fraction when settling ends. Accounting saturates at Duration::MAX.
-    pub discarded_elapsed: Duration,
-    /// Only a fraction smaller than one tick can carry to the next call.
-    pub carried_elapsed: Duration,
-    pub settling: bool,
-    /// Whole ticks the speed owed this call, before any cap.
-    pub owed_steps: u32,
-    /// The step budget stopped this call short of what was owed.
-    pub budget_bound: bool,
-    /// Time spent stepping, when a budget's clock is installed.
-    pub compute: Option<Duration>,
-    /// Ticks the step budget's gate admitted past the 1x floor, and when the
-    /// last of them ended: the time the budget bounds (ruled 2026-10-05,
-    /// "Only ticks past the floor"). The floor's own ticks run whatever the
-    /// budget, so fast-forward is never slower than 1x.
-    pub admitted: u32,
-    pub admitted_until: Option<Duration>,
-}
 
 impl Physics {
     /// Forget fractional elapsed time, for example when the host suspends or

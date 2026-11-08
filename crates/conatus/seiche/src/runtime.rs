@@ -44,10 +44,7 @@ use crate::{
     SceneField, SceneSpec, Simulation,
 };
 
-/// Per-tick timestep handed to the simulation: one 60fps frame. The whole
-/// stack integrates at this step, inline or on the actor, so a settle budget
-/// in ticks reads directly as seconds.
-pub const TICK_DT: f32 = 1.0 / 60.0;
+pub use seiche_model::pace::TICK_DT;
 
 mod elapsed;
 pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};

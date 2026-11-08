@@ -38,17 +38,26 @@ pub mod field_clock;
 pub mod fluid;
 pub mod node_body;
 pub mod observe;
+pub mod pace;
 pub mod roles;
 pub mod scene_spec;
+pub mod terms;
 pub mod view;
 
 pub use edge_topology::{EdgeIter, EdgeRun, EdgeTopology};
 pub use field_clock::FieldClock;
 pub use fluid::{Basin, ContactShape, Fluid, FluidContact, FluidParams};
 pub use node_body::{NodeCollider, NodeMaterial};
+pub use pace::{
+    DEFAULT_BUDGET_SHARE, ElapsedStepConfig, ElapsedStepReport, FALLBACK_DISPLAY_PERIOD, PaceStats,
+    Speed, StepBudget, TICK_DT, TICK_DURATION, display_period,
+};
 pub use roles::{Axes, Role, RoleTable};
 pub use scene_spec::{
     JointMotorSpec, SceneBodyId, SceneBodySpec, SceneBodyType, SceneEmitter, SceneField,
     SceneJoint, SceneJointSpec, SceneSpec,
+};
+pub use terms::{
+    CONTACTS, Class, Currency, DAMPING, Kernel, Metric, Observable, PIN, State, Term, Topology,
 };
 pub use view::{LayoutSnapshot, LayoutView, RectSelection, SceneBodyView};
