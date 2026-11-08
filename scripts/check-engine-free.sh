@@ -9,6 +9,11 @@ FEATURES="${SEICHE_REMOTE_FEATURES:-serde}"
 
 cargo check -p seiche --no-default-features --features "$FEATURES"
 
+# The boundary: the force structs, their declarations, the dynamics spec and its
+# derivation, and the catalog builders compile and run without the engine.
+cargo test -p seiche --no-default-features --features "$FEATURES" --test engine_free_boundary
+cargo test -p seiche --no-default-features --features "$FEATURES" --lib
+
 tree=$(cargo tree -p seiche --no-default-features --features "$FEATURES" -e normal --prefix none)
 if printf '%s\n' "$tree" | grep -E '^(rapier2d|rapier|parry2d|parry|nalgebra|simba|glamx) '; then
     echo "engine-free seiche still links the engine" >&2

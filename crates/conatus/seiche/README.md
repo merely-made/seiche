@@ -10,14 +10,17 @@ from any graph or mints them directly. seiche never inspects them.
 
 ## Features
 
-`engine` (default, implied by `actor`, `gpu` and `tensor-burn`) is the force
-engine: `Simulation`, `Force`, the laws and overlays, the catalog builders, the
-drivers, `PhysicsWorker` and rapier. With it off, seiche is the `seiche-model`
-re-exports, the descriptor data, the data halves of `CouplingForce`,
-`AffinitySpring` and `AnchorSpring`, and `Physics::Remote` with its `Transport`
-and entry relay: the host side of a Worker, with no rapier, parry or nalgebra in
-its dependency tree (`scripts/check-engine-free.sh` checks it). `Physics::Inline`,
-`inline`, `offload`, `set_forces` and `set_lagged_repulsion` need the engine.
+`engine` (default, implied by `actor`, `gpu` and `tensor-burn`) is what applies
+forces to bodies: `Simulation`, `ForceContext`, every `Force::apply`, the
+drivers, `PhysicsWorker`, `Physics::Inline` and rapier. With it off, seiche still
+has the model re-exports, the descriptor data, the force structs with their
+`Declared` terms, the laws' parameters, `spec` (`DynamicsSpec` and its
+derivation), the catalog builders (`build_force_set`), the data halves of
+`CouplingForce`, `AffinitySpring` and `AnchorSpring`, and `Physics::Remote` with
+its `Transport` and entry relay, and no rapier, parry or nalgebra is in the
+dependency tree. `vector::Vector` is rapier's `Vector` with the engine and a plain
+pair without. `scripts/check-engine-free.sh` checks both. `Physics::inline`,
+`offload`, `set_forces` and `set_lagged_repulsion` need the engine.
 
 ## Core types
 
