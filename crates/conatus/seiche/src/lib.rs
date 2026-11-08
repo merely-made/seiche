@@ -72,9 +72,12 @@ pub mod runtime;
 pub use runtime::monotonic_clock;
 pub use runtime::{
     DEFAULT_BUDGET_SHARE, ElapsedStepConfig, ElapsedStepReport, FALLBACK_DISPLAY_PERIOD, PaceStats,
-    Physics, PhysicsCommand, PhysicsUpdate, Speed, StepBudget, TICK_DT, TICK_DURATION,
-    display_period,
+    Physics, PhysicsCommand, PhysicsUpdate, PhysicsWorker, Speed, StepBudget, TICK_DT,
+    TICK_DURATION, Transport, display_period,
 };
+/// The messages between a host and a physics Worker, and their codec.
+pub use seiche_model::wire;
+pub use seiche_model::{DataCommand, ForceSetDescriptor, LawInputsData};
 
 /// What each force is, term by term (topology, kernel, state, currency,
 /// class, metric, observable), and the instruments that check it.

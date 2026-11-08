@@ -173,6 +173,7 @@ impl<'a> LawInputs<'a> {
             overlays: overlays.to_vec(),
             sources,
             inputs: self.to_data(),
+            contact_cutoff: None,
         }
     }
 

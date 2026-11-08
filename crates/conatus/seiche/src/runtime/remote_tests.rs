@@ -407,3 +407,42 @@ fn a_cached_build_makes_the_same_forces_as_an_uncached_one() {
         assert_eq!(run(true), run(false), "{law:?}");
     }
 }
+
+#[test]
+fn a_contact_cutoff_descriptor_builds_one_exclusion_and_travels() {
+    let d = seiche_model::ForceSetDescriptor {
+        contact_cutoff: Some(2.0 * crate::NODE_BODY_RADIUS),
+        ..descriptor(PhysicsLaw::Orbit, &[PhysicsOverlay::Skeleton], None)
+    };
+    assert_eq!(crate::catalog::build_force_set(&d).len(), 1);
+    let boxed = {
+        let mut sim = Simulation::new();
+        sim.sync_nodes(positions());
+        sim.set_forces(vec![Box::new(crate::NodeExclusion {
+            cutoff: 2.0 * crate::NODE_BODY_RADIUS,
+            ..Default::default()
+        })]);
+        let mut physics = Physics::inline(sim, 0);
+        physics.settle(TICKS);
+        let mut view = LayoutView::default();
+        while physics.advance_frame(&mut view) {}
+        bits(&view)
+    };
+    assert_eq!(remote_run_nodes_only(&d), boxed);
+}
+
+fn remote_run_nodes_only(d: &seiche_model::ForceSetDescriptor) -> Vec<(usize, u32, u32)> {
+    let hub = Loopback::new(false);
+    let mut physics = Physics::remote(Box::new(hub.clone()));
+    physics.sync_nodes(positions());
+    physics.set_force_set(d.clone());
+    physics.settle(TICKS);
+    let mut view = LayoutView::default();
+    for _ in 0..10_000 {
+        hub.pump();
+        if !physics.advance_frame(&mut view) {
+            return bits(&view);
+        }
+    }
+    panic!("did not settle");
+}

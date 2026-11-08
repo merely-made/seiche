@@ -170,6 +170,7 @@ fn samples() -> Vec<DataCommand> {
                 meaning: None,
                 revision: Some(7),
             },
+            contact_cutoff: Some(36.0),
         }),
     ]
 }

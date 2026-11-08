@@ -119,6 +119,9 @@ impl LawInputs<'_> {
 /// [`LawInputs::composed`], so the forces are those a host would build in
 /// process from the same inputs.
 pub fn build_force_set(descriptor: &ForceSetDescriptor) -> Vec<Box<dyn Force>> {
+    if let Some(cutoff) = descriptor.contact_cutoff {
+        return contact_only(cutoff);
+    }
     LawInputs::from_data(&descriptor.inputs).composed(
         descriptor.law,
         descriptor.composition.as_ref(),
@@ -136,6 +139,9 @@ pub fn build_force_set_cached(
     descriptor: &ForceSetDescriptor,
     cache: &std::rc::Rc<std::cell::RefCell<super::ChannelCache>>,
 ) -> Vec<Box<dyn Force>> {
+    if let Some(cutoff) = descriptor.contact_cutoff {
+        return contact_only(cutoff);
+    }
     let mut inputs = LawInputs::from_data(&descriptor.inputs);
     if descriptor.inputs.revision.is_some() {
         inputs = inputs.with_channels(Box::new(super::cache::Cached::new(
@@ -149,4 +155,12 @@ pub fn build_force_set_cached(
         &descriptor.overlays,
         descriptor.sources,
     )
+}
+
+/// Contact separation alone: the one force a descriptor with a `contact_cutoff` builds.
+fn contact_only(cutoff: f32) -> Vec<Box<dyn Force>> {
+    vec![Box::new(crate::NodeExclusion {
+        cutoff,
+        ..Default::default()
+    })]
 }

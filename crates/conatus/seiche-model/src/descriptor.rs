@@ -102,4 +102,8 @@ pub struct ForceSetDescriptor {
     pub overlays: Vec<PhysicsOverlay>,
     pub sources: LawSources,
     pub inputs: LawInputsData,
+    /// When set, the force set is one `NodeExclusion` reaching this far, and
+    /// the law, composition and overlays are not read: what the canvas runs
+    /// when two directly encoded axes admit contact separation only.
+    pub contact_cutoff: Option<f32>,
 }
