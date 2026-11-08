@@ -29,8 +29,10 @@ use numen::{
     CouplingResponse, FieldDefinition, FieldRegistry, ScalarField, VectorField, eval_scalar,
     eval_vector, grad_scalar,
 };
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
 
+#[cfg(feature = "engine")]
 use crate::{
     Class, Currency, Declared, Force, ForceContext, Kernel, Layout, Observable, State, Term,
     Topology,
@@ -298,8 +300,8 @@ impl CouplingForce {
                 let depth = eval_scalar(scalar, &self.binding.registry, x, y, sample_time);
                 if depth > 0.0 {
                     let (gx, gy) = grad_scalar(scalar, &self.binding.registry, x, y, sample_time);
-                    let force = Vector::new(gx, gy) * (self.binding.strength * depth);
-                    AddForce([force.x, force.y])
+                    let scale = self.binding.strength * depth;
+                    AddForce([gx * scale, gy * scale])
                 } else {
                     Inert(OutsidePositiveRegion)
                 }
@@ -330,8 +332,8 @@ impl CouplingForce {
                     return Inert(NonDynamicBody);
                 }
                 let (vx, vy) = eval_vector(field, &self.binding.registry, x, y, sample_time);
-                let offset = Vector::new(vx, vy) * (self.binding.strength * dt);
-                Displace([offset.x, offset.y])
+                let scale = self.binding.strength * dt;
+                Displace([vx * scale, vy * scale])
             },
             CouplingResponse::Open { .. } => Inert(UnsupportedResponse),
         }
@@ -352,6 +354,7 @@ impl CouplingForce {
     }
 }
 
+#[cfg(feature = "engine")]
 impl CouplingForce {
     pub(crate) fn write_effect(body: &mut RigidBody, effect: CouplingEffect) {
         match effect {
@@ -370,6 +373,7 @@ impl CouplingForce {
     }
 }
 
+#[cfg(feature = "engine")]
 impl CouplingForce {
     pub(crate) fn sample_points(
         &self,
@@ -413,6 +417,7 @@ impl CouplingForce {
         }
     }
 }
+#[cfg(feature = "engine")]
 impl Force for CouplingForce {
     fn wants_tick(&self) -> bool {
         let typed = match &self.binding.response {
@@ -438,6 +443,7 @@ impl Force for CouplingForce {
 /// or extent-clipped gradients conservatively declare N: the timeless energy
 /// interface cannot prove their global potential. State-writing responses stay
 /// K. The open tail applies no physical term.
+#[cfg(feature = "engine")]
 impl Declared for CouplingForce {
     fn terms(&self) -> Vec<Term> {
         let field = |class| {
@@ -504,10 +510,10 @@ impl Declared for CouplingForce {
 // with `from_coupling`: that logic is now mere-canvas's
 // `build::coupling_force_from_graph`, and its tests live there. What stays here
 // is the kernel-free physics of a resolved [`CouplingForce`].
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 #[path = "coupling_effect_tests.rs"]
 mod effect_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 #[path = "coupling_force_tests.rs"]
 mod tests;

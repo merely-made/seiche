@@ -7,9 +7,12 @@
 //! Accepted simulation time, separate from lagged-result step age (F203).
 pub use seiche_model::field_clock::FieldClock;
 
+#[cfg(feature = "engine")]
 use crate::{NodeKey, Simulation};
+#[cfg(feature = "engine")]
 use euclid::default::Point2D;
 
+#[cfg(feature = "engine")]
 impl Simulation {
     pub fn set_field_clock_paused(&mut self, paused: bool) {
         self.field_clock.paused = paused;

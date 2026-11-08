@@ -31,7 +31,9 @@
 
 use crate::NodeKey;
 
+#[cfg(feature = "engine")]
 use crate::terms::spring;
+#[cfg(feature = "engine")]
 use crate::{Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology};
 
 /// Default attraction stiffness at affinity `1.0` (scaled linearly by each
@@ -106,6 +108,7 @@ impl AffinitySpring {
     }
 }
 
+#[cfg(feature = "engine")]
 impl Force for AffinitySpring {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         for &(a, b, weight) in &self.pairs {
@@ -142,6 +145,7 @@ impl Force for AffinitySpring {
 
 /// A one-sided spring over the signal's pairs: E, its energy zero inside the
 /// rest length.
+#[cfg(feature = "engine")]
 impl Declared for AffinitySpring {
     fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
         Some(crate::scale::Scale {
@@ -185,7 +189,7 @@ impl Declared for AffinitySpring {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{NodeExclusion, Simulation};

@@ -8,7 +8,9 @@ use super::*;
 
 impl Physics {
     /// A new in-thread backend over `sim`, with an initial settle budget.
+#[cfg(feature = "engine")]
     pub fn inline(sim: Simulation, initial_settle: u32) -> Self {
+        #[cfg(feature = "engine")]
         Physics::Inline(InlinePhysics {
             sim,
             ticks_remaining: initial_settle,
@@ -119,13 +121,21 @@ impl Physics {
     /// cache that only an in-thread build can share (the canvas's channel
     /// registry) on the inline path, and sends data to any other backend.
     pub fn runs_inline(&self) -> bool {
-        matches!(self, Physics::Inline(_))
+        #[cfg(feature = "engine")]
+        {
+            matches!(self, Physics::Inline(_))
+        }
+        #[cfg(not(feature = "engine"))]
+        {
+            false
+        }
     }
 
     /// Set the simulation speed: ticks per frame at the fixed [`TICK_DT`].
     /// The trajectory does not depend on it.
     pub fn set_speed(&mut self, speed: Speed) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 p.pace.speed = speed;
                 if speed >= Speed::REAL_TIME {
@@ -141,6 +151,7 @@ impl Physics {
 
     pub fn speed(&self) -> Speed {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.pace.speed,
                         Physics::Actor(p) | Physics::Remote(p) => p.dial,
         }
@@ -151,6 +162,7 @@ impl Physics {
     /// its own clock; the host's clock function is not sent.
     pub fn set_step_budget(&mut self, budget: Option<StepBudget>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.pace.budget = budget,
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.budget = budget;
@@ -163,6 +175,7 @@ impl Physics {
     /// The step budget last set, as the host gave it.
     pub fn step_budget(&self) -> Option<StepBudget> {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.pace.budget,
                         Physics::Actor(p) | Physics::Remote(p) => p.budget,
         }
@@ -171,6 +184,7 @@ impl Physics {
     /// Ticks run, the effective speed, and whether the budget bound.
     pub fn pace(&self) -> PaceStats {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.pace.stats(),
                         Physics::Actor(p) | Physics::Remote(p) => p.pace,
         }
@@ -179,6 +193,7 @@ impl Physics {
     /// Extend the settle budget to at least `ticks` (start / prolong a settle).
     pub fn settle(&mut self, ticks: u32) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 p.ticks_remaining = p.ticks_remaining.max(ticks);
                 if ticks > 0 {
@@ -202,6 +217,7 @@ impl Physics {
     /// settle resumes; a new drag can temporarily step while held.
     pub fn halt(&mut self) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 p.ticks_remaining = 0;
                 p.dragging = false;
@@ -223,6 +239,7 @@ impl Physics {
     /// pinned node's neighbors react through the springs).
     pub fn set_dragging(&mut self, dragging: bool) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.dragging = dragging,
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetDragging(dragging));
@@ -233,6 +250,7 @@ impl Physics {
     /// Whether the layout is still moving (settle in progress or a node dragged).
     pub fn is_settling(&self) -> bool {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted),
                         Physics::Actor(p) | Physics::Remote(p) => p.settling,
         }
@@ -243,6 +261,7 @@ impl Physics {
     /// Offloaded, this drains only what the actor has already emitted.
     pub fn refresh(&mut self, view: &mut LayoutView) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);
                 speed::fold(p, view, settling);
@@ -261,6 +280,7 @@ impl Physics {
     ///   (older queued ones are superseded — only the freshest layout matters).
     pub fn advance_frame(&mut self, view: &mut LayoutView) -> bool {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => speed::advance_frame(p, view),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.fold_latest(view);
@@ -273,6 +293,7 @@ impl Physics {
     /// inline, the last folded snapshot's offloaded. (G7, F46.)
     pub fn rms_speed(&self) -> f32 {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.rms_speed(),
                         Physics::Actor(p) | Physics::Remote(p) => p.speed,
         }
@@ -284,6 +305,7 @@ impl Physics {
     /// neither and answers `(false, 0)`.
     pub fn tick_demand(&self) -> (bool, u32) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => (p.sim.wants_continuous_tick(), p.ticks_remaining),
                         Physics::Actor(_) | Physics::Remote(_) => (false, 0),
         }

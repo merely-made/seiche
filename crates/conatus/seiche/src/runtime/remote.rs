@@ -134,8 +134,10 @@ impl RemoteLink {
 
 fn command_name(command: &PhysicsCommand) -> &'static str {
     match command {
+        #[cfg(feature = "engine")]
         PhysicsCommand::SetForces(_) => "SetForces",
         PhysicsCommand::SetCouplingEntryHandler(_) => "SetCouplingEntryHandler",
+        #[cfg(feature = "engine")]
         PhysicsCommand::SetLaggedRepulsion { .. } => "SetLaggedRepulsion",
         _ => "a data command",
     }

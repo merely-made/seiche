@@ -51,10 +51,15 @@
 //! `impl` span modules; private fields stay reachable from these child modules.)
 
 #![doc(html_root_url = "https://docs.rs/seiche/0.0.1")]
+// Without the engine the pace and cache internals have no driver in this crate.
+#![cfg_attr(not(feature = "engine"), allow(dead_code))]
 
+#[cfg(feature = "engine")]
 use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use euclid::default::{Box2D, Point2D};
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
 
 /// The opaque identifier seiche binds a body to: petgraph's stable node index, the
@@ -72,71 +77,98 @@ pub mod runtime;
 pub use runtime::monotonic_clock;
 pub use runtime::{
     DEFAULT_BUDGET_SHARE, ElapsedStepConfig, ElapsedStepReport, FALLBACK_DISPLAY_PERIOD, PaceStats,
-    Physics, PhysicsCommand, PhysicsUpdate, PhysicsWorker, Speed, StepBudget, TICK_DT,
-    TICK_DURATION, Transport, display_period,
+    Physics, PhysicsCommand, PhysicsUpdate, Speed, StepBudget, TICK_DT, TICK_DURATION, Transport,
+    display_period,
 };
+#[cfg(feature = "engine")]
+pub use runtime::PhysicsWorker;
 /// The messages between a host and a physics Worker, and their codec.
 pub use seiche_model::wire;
 pub use seiche_model::{DataCommand, ForceSetDescriptor, LawInputsData};
 
 /// What each force is, term by term (topology, kernel, state, currency,
 /// class, metric, observable), and the instruments that check it.
+#[cfg(feature = "engine")]
 pub mod instruments;
+#[cfg(feature = "engine")]
 pub mod terms;
-pub use terms::{
-    Class, Currency, Declared, Kernel, Layout, Metric, Observable, State, Term, Topology,
+pub use seiche_model::terms::{
+    Class, Currency, Kernel, Metric, Observable, State, Term, Topology,
 };
+#[cfg(feature = "engine")]
+pub use terms::{Declared, Layout};
 
 /// The combinators (dynamics grammar plan, G3): composition by currency, the
 /// weighted sum, groups, and the observables their receipts read.
+#[cfg(feature = "engine")]
 pub mod compose;
+#[cfg(feature = "engine")]
 pub mod grouped;
 pub use seiche_model::observe;
+#[cfg(feature = "engine")]
 pub mod scale;
 /// The dynamics spec: a live layout's drive as portable data (G4).
+#[cfg(feature = "engine")]
 pub mod spec;
+#[cfg(feature = "engine")]
 pub mod weighted;
+#[cfg(feature = "engine")]
 pub use compose::Admission;
+#[cfg(feature = "engine")]
 pub use grouped::{Grouped, Partition, Spread};
+#[cfg(feature = "engine")]
 pub use spec::{DynamicsSpec, SpecCatalog, SpecError};
+#[cfg(feature = "engine")]
 pub use weighted::Weighted;
 
 /// Built-in force forces for the force-directed orrery layout.
+#[cfg(feature = "engine")]
 pub mod forces;
+#[cfg(feature = "engine")]
 pub use forces::{Boundary, EdgeSpring, NodeExclusion};
 
 /// The physics catalog's **laws**: distinct dynamics over the node bodies,
 /// each a [`Force`] a host installs through [`Simulation::set_forces`].
 /// Springs (the trio above), Charge ([`BarnesHutRepulsion`] + springs) and
 /// Still (no forces) need nothing here; the rest are their own files.
+#[cfg(feature = "engine")]
 pub mod laws;
+#[cfg(feature = "engine")]
 pub mod overlays;
 /// The catalog's engine half: the graph algorithms its sources read, and (as the
 /// descriptor step lands) the builders from a law, overlays and inputs to forces.
 pub mod catalog;
+#[cfg(feature = "engine")]
 pub use laws::{
     Anneal, Boids, CounterDamping, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold,
     Kuramoto, LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
 };
+#[cfg(feature = "engine")]
 pub use overlays::{
     DegreeRepulsion, DepthGravity, DomainCluster, GravityLocus, GridSnap, HubGravity,
 };
 
 /// Tensorized N-body force laws. Burn stays opt-in behind `tensor-burn` so
 /// ordinary layout consumers do not acquire the GPU/runtime stack.
+#[cfg(feature = "engine")]
 pub mod tensor_forces;
+#[cfg(feature = "engine")]
 pub use tensor_forces::{
     NodeExclusionParams, RepulsionInputError, RepulsionParams, node_exclusion_reference,
     repulsion_reference,
 };
 #[cfg(feature = "tensor-burn")]
+#[cfg(feature = "engine")]
 pub use tensor_forces::{node_exclusion, repulsion};
 #[cfg(feature = "tensor-burn-wgpu")]
+#[cfg(feature = "engine")]
 pub use tensor_forces::{node_exclusion_wgpu_roundtrip, repulsion_wgpu_roundtrip};
 
 /// The lagged seam: a pairwise law evaluated elsewhere (the host's GPU) and
 /// applied a step or more later, the CPU law covering the steps it cannot.
+#[cfg(feature = "engine")]
 pub mod lagged;
+#[cfg(feature = "engine")]
 pub use lagged::{
     DEFAULT_MAX_STALE_STEPS, LaggedLane, LaggedRepulsion, LaggedStats, Repulsion, RepulsionRoute,
 };
@@ -150,7 +182,9 @@ pub mod gpu;
 /// [`barnes_hut::repulsion_forces`] primitive is ready; wiring it as a live
 /// [`Force`] is a tuning step (it would supplement [`NodeExclusion`]'s local
 /// separation with global spreading).
+#[cfg(feature = "engine")]
 pub mod barnes_hut;
+#[cfg(feature = "engine")]
 pub use barnes_hut::{BarnesHutConfig, BarnesHutRepulsion, repulsion_forces};
 
 /// The aether→seiche seam: a [`numen::Coupling`] compiled to a
@@ -185,7 +219,9 @@ pub use anchor_force::{AnchorSpring, DEFAULT_ANCHOR_SLACK, DEFAULT_ANCHOR_STIFFN
 /// scope, and the axis locks an encoded axis takes. (Dynamics grammar plan, G7.)
 pub mod roles;
 pub use roles::{Axes, Role, RoleTable};
+#[cfg(feature = "engine")]
 pub mod settle;
+#[cfg(feature = "engine")]
 pub use settle::{DynamicsRunner, SettleEnd, SettleError, SettleReport, settle};
 
 /// Position-Based Fluids (PBF): our own small SPH liquid for the orrery (salva lags rapier badly,
@@ -197,8 +233,8 @@ pub use seiche_model::{Basin, ContactShape, Fluid, FluidContact, FluidParams};
 /// The declarative scene library: ready-made [`SceneSpec`]s the orrery loads behind the
 /// graph (drop-bowl, pyramid, dominoes, Galton board, funnel, drift, chain, whirlpool, fountain).
 /// Data, not engine code; the growing catalog lives here to keep `lib.rs` under the size ceiling.
-pub mod scenes;
-pub use scenes::{
+pub use seiche_model::scenes;
+pub use seiche_model::{
     ball_and_chain_scene, bridge_scene, chain_scene, cradle_scene, domino_scene, drift_scene,
     drop_bowl_scene, fountain_scene, funnel_scene, galton_scene, mixer_scene, pyramid_scene,
     whirlpool_scene,
@@ -207,6 +243,7 @@ pub use scenes::{
 /// The declarative scene **format**: the data types a [`SceneSpec`] is built from (bodies,
 /// joints, world settings). Split from `lib.rs` because the format grows independently of the
 /// simulation core. (Physics scenes P4b.)
+#[cfg(feature = "engine")]
 use seiche_model::scene_spec;
 pub use seiche_model::{
     JointMotorSpec, SceneBodyId, SceneBodySpec, SceneBodyType, SceneEmitter, SceneField,
@@ -215,7 +252,9 @@ pub use seiche_model::{
 
 /// The node-body axis: a node's collider **shape** ([`NodeCollider`]) and physical **material**
 /// ([`NodeMaterial`]), and the [`Simulation`] methods that re-apply each to live bodies. (Node-rep.)
+#[cfg(feature = "engine")]
 mod node_body;
+#[cfg(feature = "engine")]
 mod obstacles;
 pub use seiche_model::StaticObstacle;
 pub use seiche_model::{NodeCollider, NodeMaterial};
@@ -223,38 +262,50 @@ pub use seiche_model::{NodeCollider, NodeMaterial};
 /// The **sieve**: collision predicates as data — nodes carry [`Kinds`], a sieve scene body
 /// blocks the kinds it names and passes the rest, computed by rapier's interaction groups
 /// with no per-frame work. (Tactile tier T2.)
+#[cfg(feature = "engine")]
 mod sift;
+#[cfg(feature = "engine")]
 pub use sift::Kinds;
 
 /// Node-body lifecycle on [`Simulation`]: reconciling the body set with the graph (`sync_*`),
 /// the spring-edge topology, and the body accessors the read model is built from.
+#[cfg(feature = "engine")]
 mod sync;
 
 /// Read-only geometric **proposals** ("physics proposes, the record disposes"): containments
 /// and supports, for the host to promote to facts at explicit commitments. (P1 + tactile T3.)
+#[cfg(feature = "engine")]
 mod propose;
+#[cfg(feature = "engine")]
 pub use propose::Support;
 
 /// The rigid **scene** tier on [`Simulation`]: scene-decoration bodies, declarative [`SceneSpec`]
 /// loading + joints, world gravity, and the per-node tangibility lever.
+#[cfg(feature = "engine")]
 mod scene_sim;
 
 /// The **fluid** tier on [`Simulation`]: loading the PBF pool and the two-way coupling between
 /// pool and rapier bodies (the solver itself is [`fluid`]).
+#[cfg(feature = "engine")]
 mod fluid_coupling;
 
 /// The force-**field** tier on [`Simulation`] (a whirlpool / well) plus the actor's keep-ticking
 /// predicate [`Simulation::wants_continuous_tick`].
+#[cfg(feature = "engine")]
 mod field;
+#[cfg(feature = "engine")]
 pub use field::SceneFieldTerms;
 
 /// Continuous body **emitters** (fountains / streams) on [`Simulation`].
+#[cfg(feature = "engine")]
 mod emitter;
+#[cfg(feature = "engine")]
 use emitter::LiveEmitter;
 
 /// Scene-geometry queries for the orrery canvas: edge geometry, edge picking,
 /// and marquee rect-select (node point-pick + cull live on `Simulation`
 /// directly). Split out to keep `lib.rs` under the per-file size ceiling.
+#[cfg(feature = "engine")]
 mod query;
 
 /// The rapier-free read model — a position-only [`LayoutView`] the host renders
@@ -276,16 +327,19 @@ pub use seiche_model::{NODE_BODY_DENSITY, NODE_BODY_RADIUS};
 /// inertial feel: a released node coasts a moment before settling, rather
 /// than stopping dead. Low enough to glide, high enough that the layout
 /// still comes to rest without continuous input.
+#[cfg(feature = "engine")]
 const DEFAULT_LINEAR_DAMPING: f32 = 2.5;
 
 /// Angular damping. Bodies don't visibly rotate in the orrery
 /// renderer (circles are isotropic), but rapier still tracks angular
 /// velocity; high damping prevents the integrator from accumulating
 /// spurious spin.
+#[cfg(feature = "engine")]
 const DEFAULT_ANGULAR_DAMPING: f32 = 4.0;
 
 /// Upper bound on bodies a single [`SceneSpec`] loads (and a live emitter spawns), so a runaway
 /// scene can't swamp the physics actor's per-tick budget. (Physics scenes P3.)
+#[cfg(feature = "engine")]
 const SCENE_BODY_CAP: usize = 200;
 
 /// Collision groups that keep the graph and the scene from hard-colliding by
@@ -295,12 +349,15 @@ const SCENE_BODY_CAP: usize = 200;
 /// by adding [`SCENE_GROUP`] to its own filter (the tangibility lever, P2). rapier's
 /// pairwise test needs both sides to admit the other, so the node's filter alone
 /// gates node-scene contact. (Physics scenes P1.)
+#[cfg(feature = "engine")]
 const NODE_GROUP: Group = Group::GROUP_1;
+#[cfg(feature = "engine")]
 const SCENE_GROUP: Group = Group::GROUP_2;
 
 /// Interaction groups for a scene-decoration collider: member of [`SCENE_GROUP`],
 /// colliding with the scene and admitting nodes (a node still passes through unless
 /// its own filter opts in).
+#[cfg(feature = "engine")]
 fn scene_groups() -> InteractionGroups {
     InteractionGroups::new(
         SCENE_GROUP,
@@ -319,6 +376,7 @@ fn scene_groups() -> InteractionGroups {
 ///
 /// Every force is [`Declared`]: it says what terms it applies, so a catalog
 /// reads its class and currency rather than restating them.
+#[cfg(feature = "engine")]
 pub trait Force: Declared + Send {
     fn apply(&self, ctx: &mut ForceContext<'_>, dt: f32);
 
@@ -333,6 +391,7 @@ pub trait Force: Declared + Send {
 ///
 /// A solver receives this rather than loose constants so it cannot quietly omit
 /// `NodeExclusion`'s cutoff or substitute smooth softening for its hard floor.
+#[cfg(feature = "engine")]
 #[derive(Clone, Copy, Debug)]
 pub struct RepulsionRequest {
     pub strength: f32,
@@ -341,12 +400,14 @@ pub struct RepulsionRequest {
 }
 
 /// A validated force vector returned by a [`RepulsionSolver`].
+#[cfg(feature = "engine")]
 #[derive(Clone, Debug)]
 pub struct RepulsionForces {
     x: Vec<f32>,
     y: Vec<f32>,
 }
 
+#[cfg(feature = "engine")]
 impl RepulsionForces {
     /// Construct output for exactly `expected` bodies, rejecting a bad or
     /// non-finite result before it can enter Rapier.
@@ -383,6 +444,7 @@ impl RepulsionForces {
 }
 
 /// One component of an invalid solver result.
+#[cfg(feature = "engine")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RepulsionComponent {
     X,
@@ -390,6 +452,7 @@ pub enum RepulsionComponent {
 }
 
 /// A solver result that was unsafe to apply to the Rapier world.
+#[cfg(feature = "engine")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RepulsionSolverError {
     OutputLength {
@@ -404,6 +467,7 @@ pub enum RepulsionSolverError {
     Backend(String),
 }
 
+#[cfg(feature = "engine")]
 impl std::fmt::Display for RepulsionSolverError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -422,6 +486,7 @@ impl std::fmt::Display for RepulsionSolverError {
     }
 }
 
+#[cfg(feature = "engine")]
 impl std::error::Error for RepulsionSolverError {}
 
 /// A host-injected, synchronous pairwise-repulsion solver: the route tests
@@ -431,6 +496,7 @@ impl std::error::Error for RepulsionSolverError {}
 /// Rapier in the same step. [`NodeExclusion`] routes to it above
 /// [`Simulation::set_repulsion_solver`]'s threshold, falling back to its CPU
 /// law if it fails.
+#[cfg(feature = "engine")]
 pub type RepulsionSolver = std::sync::Arc<
     dyn Fn(&[f32], &[f32], RepulsionRequest) -> Result<RepulsionForces, RepulsionSolverError>
         + Send
@@ -440,11 +506,13 @@ pub type RepulsionSolver = std::sync::Arc<
 /// Default node count above which [`NodeExclusion`] uses an installed
 /// [`RepulsionSolver`]. This is only a host-configurable staging guard, not a
 /// residency or Barnes–Hut crossover claim; hosts set it from their own receipt.
+#[cfg(feature = "engine")]
 pub const DEFAULT_GPU_REPULSION_THRESHOLD: usize = 1_000;
 
 /// Per-tick view a [`Force`] sees: mutable access to the rapier body
 /// store plus the NodeKey ↔ handle bimap so forces can reason about
 /// pairs / topology when they need to.
+#[cfg(feature = "engine")]
 pub struct ForceContext<'a> {
     pub bodies: &'a mut RigidBodySet,
     pub colliders: &'a ColliderSet,
@@ -467,6 +535,7 @@ pub struct ForceContext<'a> {
 
 /// One rapier world + bookkeeping. The host owns one of these per
 /// graph; seiche stays pure (no global state, no static handles).
+#[cfg(feature = "engine")]
 pub struct Simulation {
     pipeline: PhysicsPipeline,
     parameters: IntegrationParameters,
@@ -564,6 +633,7 @@ pub struct Simulation {
     emitters: Vec<LiveEmitter>,
 }
 
+#[cfg(feature = "engine")]
 impl Default for Simulation {
     fn default() -> Self {
         Self::new()
@@ -573,6 +643,7 @@ impl Default for Simulation {
 // The simulation must be `Send` so a host can build it on, and run its tick on,
 // a dedicated physics actor thread (P6 always-offload). It is intentionally not
 // required to be `Sync` — only one thread (the actor) ever touches it.
+#[cfg(feature = "engine")]
 const _: fn() = || {
     fn assert_send<T: Send>() {}
     assert_send::<Simulation>();
@@ -581,25 +652,29 @@ const _: fn() = || {
 
 // The simulation + built-in-force test suite, now kernel-free (drives the
 // physics through `sync_nodes` / `sync_edges`, not a mere `Graph`).
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod edge_topology_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod view_tests;
 
 /// The lagged seam's receipts on evaluators whose timing the test controls.
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod lagged_tests;
 
 /// Integration tests for the scene / fluid / field / emitter tiers (split alongside them).
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod scene_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
+mod scene_catalog_tests;
+
+#[cfg(all(test, feature = "engine"))]
 mod field_runtime_tests;
 
+#[cfg(feature = "engine")]
 #[path = "simulation.rs"]
 mod simulation;

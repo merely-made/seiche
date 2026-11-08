@@ -10,6 +10,7 @@ impl Physics {
     /// Reconcile the body set (see [`PhysicsCommand::SyncNodes`]).
     pub fn sync_nodes(&mut self, nodes: Vec<(NodeKey, Point2D<f32>)>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.sync_nodes(nodes),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SyncNodes(nodes));
@@ -29,6 +30,7 @@ impl Physics {
             return;
         }
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.sync_nodes_retiring(nodes, retired),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
@@ -48,6 +50,7 @@ impl Physics {
     /// Replace counted topology on either backend, retaining row order.
     pub fn sync_edge_topology(&mut self, topology: EdgeTopology) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.sync_edge_topology(topology),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SyncEdgeTopology(topology));
@@ -58,6 +61,7 @@ impl Physics {
     /// Override existing bodies' positions (a seed / reseed).
     pub fn seed(&mut self, positions: Vec<(NodeKey, Point2D<f32>)>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 p.sim.seed_positions(positions);
                 p.pace.forget();
@@ -75,6 +79,7 @@ impl Physics {
     /// (Field regions — rebuild-on-mutation.)
     pub fn set_coupling_forces(&mut self, forces: Vec<CouplingForce>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_coupling_forces(forces),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
@@ -94,6 +99,7 @@ impl Physics {
     /// actor snapshots produced before this command are rejected by the barrier.
     pub fn set_coupling_trace_limit(&mut self, limit: Option<std::num::NonZeroUsize>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_coupling_trace_limit(limit),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
@@ -109,6 +115,7 @@ impl Physics {
     /// not an evaluation of today's pose, and excludes post-integration effects.
     pub fn coupling_trace(&self) -> Option<&crate::CouplingTrace> {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.coupling_trace(),
                         Physics::Actor(p) | Physics::Remote(p) => p.coupling_trace.as_ref(),
         }
@@ -119,6 +126,7 @@ impl Physics {
     /// body state). (Graph signals — P4.)
     pub fn set_affinity_force(&mut self, force: Option<AffinitySpring>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_affinity_force(force),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetAffinityForce(force));
@@ -131,6 +139,7 @@ impl Physics {
     /// Position-preserving.
     pub fn set_anchor_force(&mut self, force: Option<crate::AnchorSpring>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_anchor_force(force),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetAnchorForce(force));
@@ -141,8 +150,10 @@ impl Physics {
     /// Replace the law's force set wholesale (see [`PhysicsCommand::SetForces`]):
     /// the physics law plus its overlays. The coupling / affinity / anchor slots
     /// are separate and untouched. Position-preserving. (Physics catalog — P1.)
+#[cfg(feature = "engine")]
     pub fn set_forces(&mut self, forces: Vec<Box<dyn Force>>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_forces(forces),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetForces(forces));
@@ -155,6 +166,7 @@ impl Physics {
     /// thread offloaded, so a host sends data and not boxed forces.
     pub fn set_force_set(&mut self, descriptor: seiche_model::ForceSetDescriptor) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p
                 .sim
                 .set_forces(crate::catalog::build_force_set(&descriptor)),
@@ -169,6 +181,7 @@ impl Physics {
     /// (Physics catalog — the receipts' energy floor.)
     pub fn kinetic_energy(&self) -> f32 {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.kinetic_energy(),
                         Physics::Actor(p) | Physics::Remote(p) => p.energy,
         }
@@ -177,6 +190,7 @@ impl Physics {
     /// The number of forces in the law slot (inline backend only). Test introspection.
     pub fn force_count(&self) -> usize {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.force_count(),
                         Physics::Actor(_) | Physics::Remote(_) => 0,
         }
@@ -185,6 +199,7 @@ impl Physics {
     /// The number of anchored nodes (inline backend only). Test introspection.
     pub fn anchor_count(&self) -> usize {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.anchor_count(),
                         Physics::Actor(_) | Physics::Remote(_) => 0,
         }
@@ -194,6 +209,7 @@ impl Physics {
     /// actor owns its sim on another thread). Test introspection for the P4 wiring. (Graph signals.)
     pub fn affinity_pair_count(&self) -> usize {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.affinity_pair_count(),
                         Physics::Actor(_) | Physics::Remote(_) => 0,
         }
@@ -201,6 +217,7 @@ impl Physics {
 
     /// Install (or clear) a lagged evaluator for `NodeExclusion`, inline or
     /// on the actor. See [`Simulation::set_lagged_repulsion`].
+#[cfg(feature = "engine")]
     pub fn set_lagged_repulsion(
         &mut self,
         solver: Option<Box<dyn LaggedRepulsion>>,
@@ -208,6 +225,7 @@ impl Physics {
         max_stale_steps: u32,
     ) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p
                 .sim
                 .set_lagged_repulsion(solver, threshold, max_stale_steps),
@@ -223,8 +241,10 @@ impl Physics {
 
     /// The lagged lane's counts (inline backend; `None` offloaded, where the
     /// device's own counters are the read).
+#[cfg(feature = "engine")]
     pub fn repulsion_stats(&self) -> Option<LaggedStats> {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.repulsion_stats(),
                         Physics::Actor(_) | Physics::Remote(_) => None,
         }

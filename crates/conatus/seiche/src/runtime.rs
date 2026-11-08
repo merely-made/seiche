@@ -39,19 +39,22 @@ use armillary::{ActorHandle, Wake, spawn};
 use euclid::default::Point2D;
 
 use crate::{
-    AffinitySpring, Basin, CouplingForce, EdgeTopology, FluidParams, Force, LaggedRepulsion,
-    LaggedStats, LayoutSnapshot, LayoutView, NodeCollider, NodeKey, NodeMaterial, SceneEmitter,
-    SceneField, SceneSpec, Simulation,
+    AffinitySpring, Basin, CouplingForce, EdgeTopology, FluidParams, LayoutSnapshot, LayoutView,
+    NodeCollider, NodeKey, NodeMaterial, SceneEmitter, SceneField, SceneSpec,
 };
+#[cfg(feature = "engine")]
+use crate::{Force, LaggedRepulsion, LaggedStats, Simulation};
 
 pub use seiche_model::pace::TICK_DT;
 
 mod data_command;
 mod elapsed;
 pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
+#[cfg(feature = "engine")]
 mod actor;
 mod speed;
 #[cfg(feature = "actor")]
+#[cfg(feature = "engine")]
 use actor::{ActorState, run};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use speed::monotonic_clock;
@@ -62,7 +65,9 @@ pub use speed::{
 mod entry_relay;
 mod remote;
 pub use remote::Transport;
+#[cfg(feature = "engine")]
 mod worker;
+#[cfg(feature = "engine")]
 pub use worker::PhysicsWorker;
 #[cfg(feature = "actor")]
 mod coupling_trace_delivery;
@@ -77,9 +82,9 @@ mod field_runtime;
 mod field_runtime_tests;
 #[cfg(all(test, feature = "actor"))]
 mod entry_relay_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod pause_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod remote_tests;
 #[cfg(all(test, feature = "actor"))]
 mod retirement_tests;
@@ -141,6 +146,7 @@ pub enum PhysicsCommand {
     /// (the catalog's `laws × overlays`), leaving the coupling / affinity / anchor
     /// slots alone. Position-preserving: no body moves until the next tick.
     /// (Physics catalog — P1.)
+#[cfg(feature = "engine")]
     SetForces(Vec<Box<dyn Force>>),
     /// [`Self::SetForces`] from data: the law slot and overlays as a
     /// [`ForceSetDescriptor`](seiche_model::ForceSetDescriptor), built into forces on
@@ -149,6 +155,7 @@ pub enum PhysicsCommand {
     /// Install (or clear) a lagged evaluator for `NodeExclusion` (see
     /// [`Simulation::set_lagged_repulsion`]): how a host's device reaches a
     /// simulation that is already offloaded. (Physics catalog P5b.)
+#[cfg(feature = "engine")]
     SetLaggedRepulsion {
         solver: Option<Box<dyn LaggedRepulsion>>,
         threshold: usize,
@@ -219,6 +226,7 @@ pub struct PhysicsUpdate {
     pub pace: PaceStats,
 }
 
+#[cfg(feature = "engine")]
 /// The in-thread backend: the simulation plus the settle/drag state the frame
 /// loop steps it with.
 pub struct InlinePhysics {
@@ -311,6 +319,7 @@ impl ActorPhysics {
     }
 }
 
+#[cfg(feature = "engine")]
 fn should_tick(sim: &Simulation, ticks: u32, dragging: bool, halted: bool) -> bool {
     dragging || (!halted && (ticks > 0 || sim.wants_continuous_tick()))
 }
@@ -318,6 +327,7 @@ fn should_tick(sim: &Simulation, ticks: u32, dragging: bool, halted: bool) -> bo
 /// The physics backend a host talks to. Inline by default (tests +
 /// wasm); `offload` swaps in the actor thread (feature `actor`).
 pub enum Physics {
+#[cfg(feature = "engine")]
     Inline(InlinePhysics),
     /// The simulation on an actor thread (only built with the `actor` feature).
     Actor(ActorPhysics),
@@ -332,6 +342,7 @@ impl Physics {
     /// bodies. (Physics settings.)
     pub fn set_linear_damping(&mut self, damping: f32) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_linear_damping(damping),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetLinearDamping(damping));
@@ -344,6 +355,7 @@ impl Physics {
     /// collider — Decision 5; node-rep — collider matches shape.)
     pub fn set_node_colliders(&mut self, colliders: Vec<(NodeKey, NodeCollider)>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_node_colliders(colliders),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link
@@ -356,6 +368,7 @@ impl Physics {
     /// (the host maps each node's [`NodeMaterial`] override). (Node body & face — material.)
     pub fn set_node_materials(&mut self, materials: Vec<(NodeKey, NodeMaterial)>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_node_materials(materials),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link
@@ -374,6 +387,7 @@ impl Physics {
         velocity: (f32, f32),
     ) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => {
                 p.sim.add_scene_body(collider, position, velocity);
             },
@@ -387,6 +401,7 @@ impl Physics {
     /// Set every node's tangibility to the scene (the scene-wide lever). (Physics scenes P2.)
     pub fn set_nodes_tangible(&mut self, tangible: bool) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_nodes_tangible(tangible),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetNodesTangible(tangible));
@@ -397,6 +412,7 @@ impl Physics {
     /// Load a declarative scene into the world (clears any prior scene). (Physics scenes P3.)
     pub fn load_scene(&mut self, spec: SceneSpec) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.load_scene(&spec),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::LoadScene(spec));
@@ -407,6 +423,7 @@ impl Physics {
     /// Replace static node-contact obstacles (inline or on the physics actor).
     pub fn set_static_obstacles(&mut self, obstacles: Vec<crate::StaticObstacle>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_static_obstacles(obstacles),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link
@@ -418,6 +435,7 @@ impl Physics {
     /// Remove every scene body. (Physics scenes P3.)
     pub fn clear_scene(&mut self) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.clear_scene(),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::ClearScene);
@@ -436,6 +454,7 @@ impl Physics {
         spacing: f32,
     ) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.load_fluid(params, basin, origin, cols, rows, spacing),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::LoadFluid {
@@ -453,6 +472,7 @@ impl Physics {
     /// Remove the liquid pool. (Physics scenes P4c.)
     pub fn clear_fluid(&mut self) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.clear_fluid(),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::ClearFluid);
@@ -463,6 +483,7 @@ impl Physics {
     /// Set (or clear) the scene force-field (whirlpool / well). (Physics scenes P4 fields.)
     pub fn set_scene_field(&mut self, field: Option<SceneField>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_scene_field(field),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetSceneField(field));
@@ -473,6 +494,7 @@ impl Physics {
     /// Add a continuous body emitter (fountain / stream). (Physics scenes — emitters.)
     pub fn add_emitter(&mut self, spec: SceneEmitter) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.add_emitter(spec),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::AddEmitter(spec));
@@ -483,6 +505,7 @@ impl Physics {
     /// Remove every emitter + its bodies. (Physics scenes — emitters.)
     pub fn clear_emitters(&mut self) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.clear_emitters(),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::ClearEmitters);
@@ -493,6 +516,7 @@ impl Physics {
     /// Pin a node to a world position (a drag in progress).
     pub fn pin(&mut self, node: NodeKey, position: Point2D<f32>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.pin(node, position),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::Pin(node, position));
@@ -503,6 +527,7 @@ impl Physics {
     /// Release a pinned node back to dynamic.
     pub fn unpin(&mut self, node: NodeKey) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.unpin(node),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::Unpin(node));
@@ -514,6 +539,7 @@ impl Physics {
     /// [`Simulation::set_axis_locks`]. (Dynamics grammar plan, G7.)
     pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
         match self {
+            #[cfg(feature = "engine")]
             Physics::Inline(p) => p.sim.set_axis_locks(locks),
                         Physics::Actor(p) | Physics::Remote(p) => {
                 p.link.command(PhysicsCommand::SetAxisLocks(locks));

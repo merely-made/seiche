@@ -17,13 +17,16 @@
 //! It is deliberately the same shape as [`CouplingForce`](crate::CouplingForce):
 //! a target, a response, a strength.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
-use std::collections::HashMap;
 
+#[cfg(feature = "engine")]
 use crate::terms::spring;
+#[cfg(feature = "engine")]
 use crate::{
-    Class, Declared, Force, ForceContext, Kernel, Layout, NodeKey, Observable, Term, Topology,
+    Class, Declared, Force, ForceContext, Kernel, Layout, Observable, Term, Topology,
 };
+use crate::NodeKey;
 
 /// Default pull toward an anchor, in force per unit of offset. Chosen so a node
 /// displaced by roughly a node-width returns without visible overshoot at the
@@ -41,7 +44,7 @@ pub const DEFAULT_ANCHOR_SLACK: f32 = 0.5;
 /// force is a snapshot: rebuild it when the arrangement recomputes.
 #[derive(Clone, Debug, Default)]
 pub struct AnchorSpring {
-    anchors: HashMap<NodeKey, Vector>,
+    anchors: std::collections::HashMap<NodeKey, [f32; 2]>,
     /// Force per unit of offset from the anchor. Public for host tuning
     /// (configurability over opinionated defaults): how firmly an anchored
     /// item returns.
@@ -54,7 +57,7 @@ impl AnchorSpring {
     /// This spring as data: anchors in node-key order, then the tuning.
     pub fn to_spec(&self) -> seiche_model::AnchorSpec {
         let mut anchors: Vec<(NodeKey, (f32, f32))> =
-            self.anchors.iter().map(|(k, v)| (*k, (v.x, v.y))).collect();
+            self.anchors.iter().map(|(k, v)| (*k, (v[0], v[1]))).collect();
         anchors.sort_by_key(|(k, _)| k.index());
         seiche_model::AnchorSpec {
             anchors,
@@ -76,7 +79,7 @@ impl AnchorSpring {
         Self {
             anchors: anchors
                 .into_iter()
-                .map(|(k, (x, y))| (k, Vector::new(x, y)))
+                .map(|(k, (x, y))| (k, [x, y]))
                 .collect(),
             stiffness: DEFAULT_ANCHOR_STIFFNESS,
             slack: DEFAULT_ANCHOR_SLACK,
@@ -100,6 +103,7 @@ impl AnchorSpring {
     }
 }
 
+#[cfg(feature = "engine")]
 impl Force for AnchorSpring {
     fn apply(&self, ctx: &mut ForceContext<'_>, _dt: f32) {
         if self.stiffness <= 0.0 {
@@ -112,7 +116,7 @@ impl Force for AnchorSpring {
             let Some(position) = ctx.bodies.get(handle).map(|b| b.translation()) else {
                 continue;
             };
-            let offset = anchor - position;
+            let offset = Vector::new(anchor[0], anchor[1]) - position;
             let distance = offset.length();
             if distance <= self.slack || distance < 1e-4 {
                 continue;
@@ -127,6 +131,7 @@ impl Force for AnchorSpring {
 
 /// The anchored role's target term: a spring to each anchored node's
 /// position with a slack, class E.
+#[cfg(feature = "engine")]
 impl Declared for AnchorSpring {
     /// A unary pull with a dead band: `k·(|o| − slack)` at the unit length.
     fn scale(&self, _term: usize) -> Option<crate::scale::Scale> {
@@ -166,7 +171,7 @@ impl Declared for AnchorSpring {
                 .filter_map(|(i, (key, _))| {
                     let anchor = self.anchors.get(key)?;
                     let (x, y) = layout.at(i);
-                    let d = (f64::from(anchor.x) - x).hypot(f64::from(anchor.y) - y);
+                    let d = (f64::from(anchor[0]) - x).hypot(f64::from(anchor[1]) - y);
                     Some(if d > slack { spring(k, d, slack) } else { 0.0 })
                 })
                 .sum(),

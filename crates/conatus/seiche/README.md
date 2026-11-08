@@ -8,6 +8,17 @@ that settles them and the host reads the positions back. Fields come from
 `NodeKey` is `petgraph::stable_graph::NodeIndex`, so a consumer supplies keys
 from any graph or mints them directly. seiche never inspects them.
 
+## Features
+
+`engine` (default, implied by `actor`, `gpu` and `tensor-burn`) is the force
+engine: `Simulation`, `Force`, the laws and overlays, the catalog builders, the
+drivers, `PhysicsWorker` and rapier. With it off, seiche is the `seiche-model`
+re-exports, the descriptor data, the data halves of `CouplingForce`,
+`AffinitySpring` and `AnchorSpring`, and `Physics::Remote` with its `Transport`
+and entry relay: the host side of a Worker, with no rapier, parry or nalgebra in
+its dependency tree (`scripts/check-engine-free.sh` checks it). `Physics::Inline`,
+`inline`, `offload`, `set_forces` and `set_lagged_repulsion` need the engine.
+
 ## Core types
 
 | Item | Contents |
@@ -34,7 +45,7 @@ and `view` are private modules, so those types are reachable only as
 | `anchor_force` | `AnchorSpring`, `DEFAULT_ANCHOR_STIFFNESS`, `DEFAULT_ANCHOR_SLACK` | Per-node springs toward arrangement-chosen slots. |
 | `fluid` | `Fluid`, `FluidParams`, `Basin`, `FluidContact`, `ContactShape` | Position-Based Fluids solver, stepped after the rigid world and coupled two ways. |
 | `scene_spec` | `SceneSpec`, `SceneBodySpec`, `SceneBodyId`, `SceneBodyType`, `SceneJoint`, `SceneJointSpec`, `JointMotorSpec`, `SceneEmitter`, `SceneField` | The declarative scene format. |
-| `scenes` | `drop_bowl_scene`, `pyramid_scene`, `domino_scene`, `galton_scene`, `funnel_scene`, `drift_scene`, `chain_scene`, `ball_and_chain_scene`, `bridge_scene`, `cradle_scene`, `mixer_scene`, `whirlpool_scene`, `fountain_scene` | Ready-made `SceneSpec`s. Data, not engine code. |
+| `scenes` (now `seiche_model::scenes`, re-exported) | `drop_bowl_scene`, `pyramid_scene`, `domino_scene`, `galton_scene`, `funnel_scene`, `drift_scene`, `chain_scene`, `ball_and_chain_scene`, `bridge_scene`, `cradle_scene`, `mixer_scene`, `whirlpool_scene`, `fountain_scene` | Ready-made `SceneSpec`s. Data, not engine code. |
 | `node_body` | `NodeCollider`, `NodeMaterial` | A node body's collider shape and physical material. |
 | `view` | `LayoutView`, `LayoutSnapshot`, `RectSelection`, `SceneBodyView` | The rapier-free read model. `LayoutSnapshot` is the `Send` payload a physics actor emits each tick; `LayoutView` applies it and answers picks, cull, edge segments, and marquee select on the UI thread. |
 

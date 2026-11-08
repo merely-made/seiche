@@ -46,6 +46,7 @@ pub mod observe;
 pub mod pace;
 pub mod roles;
 pub mod scene_spec;
+pub mod scenes;
 pub mod terms;
 pub mod view;
 #[cfg(feature = "wire")]
@@ -78,6 +79,11 @@ pub use roles::{Axes, Role, RoleTable};
 pub use scene_spec::{
     JointMotorSpec, SceneBodyId, SceneBodySpec, SceneBodyType, SceneEmitter, SceneField,
     SceneJoint, SceneJointSpec, SceneSpec, StaticObstacle,
+};
+pub use scenes::{
+    ball_and_chain_scene, bridge_scene, chain_scene, cradle_scene, domino_scene, drift_scene,
+    drop_bowl_scene, fountain_scene, funnel_scene, galton_scene, mixer_scene, pyramid_scene,
+    whirlpool_scene,
 };
 pub use terms::{
     CONTACTS, Class, Currency, DAMPING, Kernel, Metric, Observable, PIN, State, Term, Topology,

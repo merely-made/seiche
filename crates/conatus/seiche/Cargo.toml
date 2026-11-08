@@ -14,12 +14,37 @@ path = "src/lib.rs"
 
 [[example]]
 name = "binding_replay"
-required-features = ["serde"]
+required-features = ["serde", "engine"]
 
 [[example]]
 name = "binding_replay_wasm"
 crate-type = ["cdylib"]
-required-features = ["serde"]
+required-features = ["serde", "engine"]
+
+# The rest drive a `Simulation`, so they need the engine.
+[[example]]
+name = "coupling_effects"
+required-features = ["engine"]
+
+[[example]]
+name = "coupling_trace"
+required-features = ["engine"]
+
+[[example]]
+name = "field_runtime"
+required-features = ["engine"]
+
+[[test]]
+name = "contact_to_fact"
+required-features = ["engine"]
+
+[[test]]
+name = "tactile"
+required-features = ["engine"]
+
+[[test]]
+name = "gpu_repulsion"
+required-features = ["engine"]
 
 [dependencies]
 # rapier2d is the dynamics + collision substrate. Mere's spatial
@@ -28,7 +53,7 @@ required-features = ["serde"]
 # layer alongside vello and petgraph rather than a feature bolt-on.
 # enhanced-determinism (F165, carrying part of G8): cross-platform float
 # results through libm and glamx scalar-math.
-rapier2d = { version = "0.36", features = ["enhanced-determinism"] }
+rapier2d = { version = "0.36", features = ["enhanced-determinism"], optional = true }
 # NodeKey (the opaque body identifier) is petgraph's NodeIndex, the same type mere's
 # kernel and chartulary use, so seiche stays graph-agnostic without depending on
 # either; a consumer feeds its own node keys + positions in.
@@ -68,15 +93,21 @@ getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
 # are the whole interface a host drives.
 
 [features]
-default = ["actor"]
+default = ["actor", "engine"]
+# The force engine: `Simulation`, `Force`, the drivers, the laws, the overlays,
+# the catalog builders and rapier. Off, seiche is the model re-exports, the
+# descriptor data and `Physics::Remote` (the host side of a Worker); no rapier,
+# parry or nalgebra is in the dependency tree. The Worker module itself, and
+# every inline or actor host, builds with it on.
+engine = ["dep:rapier2d"]
 # `runtime::Physics::Actor`: the simulation on an armillary actor thread, with
 # the inline backend always available. Off leaves `Physics` inline-only.
-actor = ["dep:armillary"]
+actor = ["engine", "dep:armillary"]
 # Tensor laws are opt-in. The default integrator stays Burn-free.
-tensor-burn = ["dep:burn", "burn/ndarray", "dep:getrandom"]
+tensor-burn = ["engine", "dep:burn", "burn/ndarray", "dep:getrandom"]
 tensor-burn-wgpu = ["tensor-burn", "burn/wgpu", "burn/extension", "dep:burn-wgpu", "dep:getrandom"]
 # NodeExclusion's law on the host's GPU, lagged (`seiche::gpu`).
-gpu = ["dep:conatus", "dep:wgpu"]
+gpu = ["engine", "dep:conatus", "dep:wgpu"]
 # Benchmark-only staging helper for the exact NodeExclusion law.
 gpu-bench = ["tensor-burn-wgpu"]
 # The dynamics spec as data: serde on `spec` and the types it names.

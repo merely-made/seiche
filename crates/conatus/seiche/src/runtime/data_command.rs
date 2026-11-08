@@ -141,12 +141,16 @@ impl TryFrom<PhysicsCommand> for DataCommand {
             },
             P::SetCouplingEntryRelay(on) => DataCommand::SetCouplingEntryRelay(on),
             P::SetStepBudget(b) => DataCommand::SetStepBudget(b),
-            other @ (P::SetCouplingEntryHandler(_) | P::SetForces(_) | P::SetLaggedRepulsion { .. }) => {
+            other @ P::SetCouplingEntryHandler(_) => {
+                return Err(other);
+            },
+            #[cfg(feature = "engine")]
+            other @ (P::SetForces(_) | P::SetLaggedRepulsion { .. }) => {
                 return Err(other);
             },
         })
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

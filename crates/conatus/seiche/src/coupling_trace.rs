@@ -8,9 +8,12 @@
 use std::{num::NonZeroUsize, sync::Arc};
 
 use numen::{CouplingResponse, FieldDefinition, FieldExtent, FieldRegistry};
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
 
-use crate::{CouplingEffect, CouplingEvaluation, CouplingForce, ForceContext, NodeKey, Simulation};
+use crate::{CouplingEvaluation, NodeKey};
+#[cfg(feature = "engine")]
+use crate::{CouplingEffect, CouplingForce, ForceContext, Simulation};
 
 /// Opaque process-local simulation identity. Equality compares the owner token,
 /// so equal tick/generation numbers from different worlds cannot be conflated.
@@ -61,6 +64,7 @@ pub struct CouplingBodyState {
     pub sleeping: bool,
 }
 
+#[cfg(feature = "engine")]
 impl CouplingBodyState {
     fn read(body: &RigidBody) -> Self {
         let p = body.translation();
@@ -128,6 +132,7 @@ impl CouplingTrace {
     }
 }
 
+#[cfg(feature = "engine")]
 impl Simulation {
     /// Enable bounded observations of the dedicated coupling slot, or disable
     /// with `None`. Clears the previous trace. Off by default.
@@ -143,6 +148,7 @@ impl Simulation {
     }
 }
 
+#[cfg(feature = "engine")]
 impl CouplingForce {
     pub(crate) fn apply_traced(
         &self,
@@ -197,6 +203,6 @@ impl CouplingForce {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 #[path = "coupling_trace_tests.rs"]
 mod tests;

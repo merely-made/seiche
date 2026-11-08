@@ -11,8 +11,11 @@ use std::time::Duration;
 
 pub use seiche_model::pace::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
 
+#[cfg(feature = "engine")]
 use super::speed::{self, Driver, TICK_UNITS};
-use super::{LayoutView, Physics, should_tick};
+use super::{LayoutView, Physics};
+#[cfg(feature = "engine")]
+use super::should_tick;
 
 impl Physics {
     /// Forget fractional elapsed time, for example when the host suspends or
@@ -22,6 +25,7 @@ impl Physics {
     /// A deterministic driver's fraction (a slow speed's next tick) stays.
     pub fn reset_elapsed(&mut self) {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => {
                 if p.pace.driver == Some(Driver::Elapsed) {
                     p.pace.forget();
@@ -38,6 +42,7 @@ impl Physics {
     /// An offloaded backend only drains its latest accepted snapshot; calling
     /// this method never adds ticks or changes the actor's pacing. Existing
     /// [`Self::advance_frame`] remains the deterministic one-step entry point.
+    #[cfg_attr(not(feature = "engine"), allow(unused_variables))]
     pub fn advance_elapsed(
         &mut self,
         view: &mut LayoutView,
@@ -45,6 +50,7 @@ impl Physics {
         config: ElapsedStepConfig,
     ) -> ElapsedStepReport {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => {
                 // Owed time is simulated nanoseconds times a thousand: wall
                 // time times the speed in thousandths. Reports are wall time.
@@ -112,5 +118,5 @@ impl Physics {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

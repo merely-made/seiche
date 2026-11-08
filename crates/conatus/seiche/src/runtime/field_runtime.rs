@@ -10,6 +10,7 @@ impl Physics {
     /// offloaded). A force/trace reports the clock before its own tick instead.
     pub fn field_clock(&self) -> crate::FieldClock {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => p.sim.field_clock(),
                         Self::Actor(p) | Self::Remote(p) => p.field_clock,
         }
@@ -17,6 +18,7 @@ impl Physics {
     /// Explicit Reset; preserves paused/running state and solver-age counters.
     pub fn reset_field_runtime(&mut self, positions: Vec<(NodeKey, Point2D<f32>)>) {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => {
                 p.sim.reset_field_runtime(positions);
                 p.pace.forget();
@@ -45,6 +47,7 @@ impl Physics {
     /// stops callbacks for entries still in flight.
     pub fn set_coupling_entry_handler(&mut self, handler: Option<crate::CouplingEntryHandler>) {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => p.sim.set_coupling_entry_handler(handler),
                         Self::Actor(p) | Self::Remote(p) => {
                 p.coupling_membership = None;
@@ -60,6 +63,7 @@ impl Physics {
     /// normal refresh; reading it never invokes/replays an entry callback.
     pub fn coupling_membership(&self) -> Option<&crate::CouplingMembershipFrame> {
         match self {
+            #[cfg(feature = "engine")]
             Self::Inline(p) => p.sim.coupling_membership(),
                         Self::Actor(p) | Self::Remote(p) => p.coupling_membership.as_ref(),
         }

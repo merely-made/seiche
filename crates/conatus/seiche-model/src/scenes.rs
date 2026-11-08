@@ -591,7 +591,3 @@ pub fn mixer_scene() -> SceneSpec {
         joints,
     }
 }
-
-#[cfg(test)]
-#[path = "scenes/tests.rs"]
-mod tests;

@@ -7,8 +7,7 @@
 use crate::NodeKey;
 use euclid::default::Point2D;
 
-use super::*;
-use crate::Simulation;
+use crate::*;
 
 /// Every catalog scene loads its bodies (under the cap) without disturbing a node, and reports
 /// the perpetual flag the spec declared.

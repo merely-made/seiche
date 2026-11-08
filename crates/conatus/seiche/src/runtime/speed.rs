@@ -26,8 +26,12 @@ pub use seiche_model::pace::{
     DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
 };
 
-use super::{InlinePhysics, LayoutView, TICK_DT, TICK_DURATION, should_tick};
-use crate::{LayoutSnapshot, NodeKey, Simulation};
+use super::TICK_DURATION;
+use crate::{LayoutSnapshot, NodeKey};
+#[cfg(feature = "engine")]
+use super::{InlinePhysics, LayoutView, TICK_DT, should_tick};
+#[cfg(feature = "engine")]
+use crate::Simulation;
 
 /// One tick in nanoseconds, the integer [`TICK_DURATION`].
 pub(super) const TICK_NS: u64 = 16_666_667;
@@ -177,6 +181,7 @@ pub(super) struct Stepped {
     pub(super) admitted_until: Option<Duration>,
 }
 
+#[cfg(feature = "engine")]
 /// Run up to `cap` of the ticks owed, under the budget above real time, and
 /// keep the positions before the last tick below it. The budget never stops
 /// a call short of `floor`, the ticks real time would run in it, so
@@ -246,6 +251,7 @@ pub(super) fn step_owed(
     out
 }
 
+#[cfg(feature = "engine")]
 /// Fold the simulation into `view`, drawn as [`draw`] says.
 pub(super) fn fold(p: &mut InlinePhysics, view: &mut LayoutView, settling: bool) {
     p.generation = p.generation.wrapping_add(1);
@@ -273,6 +279,7 @@ pub(super) fn draw(pace: &mut Pace, snapshot: &mut LayoutSnapshot, settling: boo
     }
 }
 
+#[cfg(feature = "engine")]
 /// The actor's interval: owe one [`TICK_DURATION`], run what it pays for under
 /// the budget, and meter the `wall_ns` the last interval took.
 pub(super) fn actor_interval(
@@ -332,6 +339,7 @@ pub(super) fn thread_clock() -> Duration {
     START.get_or_init(std::time::Instant::now).elapsed()
 }
 
+#[cfg(feature = "engine")]
 /// One deterministic frame-equivalent ([`TICK_DURATION`]) at the speed: the
 /// [`super::Physics::advance_frame`] driver.
 pub(super) fn advance_frame(p: &mut InlinePhysics, view: &mut LayoutView) -> bool {
@@ -357,6 +365,7 @@ pub(super) fn advance_frame(p: &mut InlinePhysics, view: &mut LayoutView) -> boo
     settling
 }
 
+#[cfg(feature = "engine")]
 /// Keep only the fraction while moving and record the frame; at rest, forget.
 pub(super) fn settle_meter(p: &mut InlinePhysics, wall_ns: u64, steps: u32, settling: bool) {
     if settling {
@@ -375,5 +384,5 @@ pub(super) fn nanos(duration: Duration) -> u64 {
 
 const _: () = assert!(TICK_DURATION.as_nanos() == TICK_NS as u128);
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests;

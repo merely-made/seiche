@@ -7,12 +7,15 @@
 //! The `Simulation` half of the roles: holding node bodies on axes. The data
 //! (`Role`, `Axes`, `RoleTable`) lives in `seiche-model`.
 
+#[cfg(feature = "engine")]
 use rapier2d::prelude::*;
 
 pub use seiche_model::roles::{Axes, Role, RoleTable};
 
+#[cfg(feature = "engine")]
 use crate::{NodeKey, Simulation};
 
+#[cfg(feature = "engine")]
 impl Simulation {
     /// Hold node bodies on the given axes: a held axis cannot translate, so
     /// the body keeps its coordinate there exactly while forces and contacts
@@ -40,7 +43,7 @@ impl Simulation {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engine"))]
 mod tests {
     use super::*;
     use crate::{Boundary, EdgeSpring, NodeExclusion};

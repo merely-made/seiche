@@ -6,12 +6,13 @@
 
 //! Reference-point membership and explicit owner entry callbacks (F204/F205).
 use crate::{CouplingBinding, CouplingTargetIdentity, CouplingTraceSession, FieldClock, NodeKey};
+#[cfg(feature = "engine")]
 use numen::{CouplingId, FieldId};
+#[cfg(feature = "engine")]
 use rapier2d::prelude::RigidBodyHandle;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::sync::Arc;
+#[cfg(feature = "engine")]
+use std::collections::{HashMap, HashSet};
 
 pub use seiche_model::CouplingEligibility;
 
@@ -72,39 +73,46 @@ pub struct CouplingMembershipFrame {
     pub reports: Vec<CouplingMembershipReport>,
 }
 
+#[cfg(feature = "engine")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Owner {
     Named(FieldId, CouplingId),
     Anonymous(usize),
 }
+#[cfg(feature = "engine")]
 fn owner(binding: &Arc<CouplingBinding>) -> Owner {
     binding.source.map_or_else(
         || Owner::Anonymous(Arc::as_ptr(binding) as usize),
         |s| Owner::Named(s.field, s.coupling),
     )
 }
+#[cfg(feature = "engine")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Appearance {
     node: NodeKey,
     identity: Option<CouplingTargetIdentity>,
 }
+#[cfg(feature = "engine")]
 #[derive(Clone, Copy)]
 struct Seen {
     eligibility: CouplingEligibility,
     body: Option<RigidBodyHandle>,
     point: Option<[f32; 2]>,
 }
+#[cfg(feature = "engine")]
 struct Members {
     binding: Arc<CouplingBinding>,
     seen: HashMap<Appearance, Seen>,
 }
 
+#[cfg(feature = "engine")]
 #[derive(Default)]
 pub(crate) struct MembershipRuntime {
     owners: HashMap<Owner, Members>,
     ambiguous: HashSet<Owner>,
     reset: bool,
 }
+#[cfg(feature = "engine")]
 impl MembershipRuntime {
     pub(crate) fn reset(&mut self) {
         self.owners.clear();
@@ -314,6 +322,7 @@ pub(crate) fn eligibility(binding: &CouplingBinding, point: [f32; 2]) -> Couplin
         None => CouplingEligibility::UnsupportedExtent,
     }
 }
+#[cfg(feature = "engine")]
 struct Observation {
     target_index: Option<usize>,
     point: Option<[f32; 2]>,
@@ -321,6 +330,7 @@ struct Observation {
     eligibility: CouplingEligibility,
     cause: CouplingMembershipCause,
 }
+#[cfg(feature = "engine")]
 /// How an entry is acted on: by the installed handler on this thread, or left
 /// pending for the owner's side to run (the relay).
 #[derive(Clone, Copy)]
@@ -328,6 +338,7 @@ struct Entry<'a> {
     handler: Option<&'a CouplingEntryHandler>,
     relay: bool,
 }
+#[cfg(feature = "engine")]
 fn report(
     binding: &Arc<CouplingBinding>,
     appearance: Appearance,
