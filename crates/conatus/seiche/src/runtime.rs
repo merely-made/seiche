@@ -61,6 +61,8 @@ pub use speed::{
 };
 
 #[cfg(feature = "actor")]
+mod entry_relay;
+#[cfg(feature = "actor")]
 mod coupling_trace_delivery;
 #[cfg(feature = "actor")]
 mod membership_delivery;
@@ -71,6 +73,8 @@ mod coupling_trace_tests;
 mod field_runtime;
 #[cfg(all(test, feature = "actor"))]
 mod field_runtime_tests;
+#[cfg(all(test, feature = "actor"))]
+mod entry_relay_tests;
 #[cfg(test)]
 mod pause_tests;
 #[cfg(all(test, feature = "actor"))]
@@ -97,7 +101,14 @@ pub enum PhysicsCommand {
     /// Override the positions of existing bodies (a seed / reseed).
     Seed(Vec<(NodeKey, Point2D<f32>)>),
     ResetFieldRuntime(Vec<(NodeKey, Point2D<f32>)>),
+    /// Run an entry handler on the simulation's own thread (the inline path;
+    /// a closure, so it cannot cross a message boundary). The data form is
+    /// [`Self::SetCouplingEntryRelay`].
     SetCouplingEntryHandler(Option<crate::CouplingEntryHandler>),
+    /// Report coupling entries as `CouplingEntryEvent`s in the update stream
+    /// instead of running a handler here; the owner's side runs its handler
+    /// when the update lands.
+    SetCouplingEntryRelay(bool),
     /// Acknowledge all preceding commands in subsequent snapshots. The host
     /// uses this epoch to reject layouts produced before its latest reseed.
     Barrier(u64),
@@ -181,8 +192,8 @@ pub enum PhysicsCommand {
     /// Set the simulation speed (see [`Speed`]).
     SetSpeed(Speed),
     /// Bound the actor's compute per interval above real time; `None` is the
-    /// interval itself.
-    SetStepBudget(Option<std::time::Duration>),
+    /// interval itself. The actor reads its own clock.
+    SetStepBudget(Option<seiche_model::StepBudgetSpec>),
 }
 
 /// One layout the actor produced: the positions plus whether it is still
@@ -193,6 +204,11 @@ pub struct PhysicsUpdate {
     pub coupling_membership: Option<CouplingMembershipDelivery>,
     #[cfg(feature = "actor")]
     pub coupling_trace: Option<CouplingTraceDelivery>,
+    /// The coupling entries observed since the previous update, when the
+    /// relay is on (`SetCouplingEntryRelay`), for the host to run its handler
+    /// on. Every one is delivered, including those of an update a later one
+    /// supersedes.
+    pub coupling_entries: Vec<seiche_model::CouplingEntryEvent>,
     pub snapshot: LayoutSnapshot,
     pub settling: bool,
     pub command_epoch: u64,
@@ -231,6 +247,8 @@ pub struct ActorPhysics {
     budget: Option<StepBudget>,
     /// The pace the last folded snapshot carried.
     pace: PaceStats,
+    /// The owner's entry handler and the coupling lists it resolves events by.
+    entry: entry_relay::EntryRelay,
 }
 
 #[cfg(feature = "actor")]
@@ -244,14 +262,18 @@ impl ActorPhysics {
             .command(PhysicsCommand::Barrier(self.command_epoch));
     }
 
-    fn latest(&mut self) -> Option<PhysicsUpdate> {
+    /// The freshest update, and every coupling entry received, in order.
+    fn latest(&mut self) -> (Option<PhysicsUpdate>, Vec<seiche_model::CouplingEntryEvent>) {
         let mut latest = None;
-        while let Ok(update) = self.updates.try_recv() {
+        let mut entries = Vec::new();
+        while let Ok(mut update) = self.updates.try_recv() {
+            entries.append(&mut update.coupling_entries);
+            self.entry.acknowledged(update.command_epoch);
             if update.command_epoch >= self.command_epoch {
                 latest = Some(update);
             }
         }
-        latest
+        (latest, entries)
     }
 }
 
@@ -481,7 +503,8 @@ impl Physics {
 #[cfg(feature = "actor")]
 impl ActorPhysics {
     fn fold_latest(&mut self, view: &mut LayoutView) {
-        if let Some(update) = self.latest() {
+        let (latest, entries) = self.latest();
+        if let Some(update) = latest {
             view.apply_snapshot(&update.snapshot);
             self.settling = update.settling;
             self.energy = update.snapshot.energy;
@@ -492,6 +515,9 @@ impl ActorPhysics {
                 .coupling_membership
                 .and_then(|delivery| delivery.read());
             self.coupling_trace = update.coupling_trace.and_then(|delivery| delivery.read());
+        }
+        if !entries.is_empty() {
+            self.entry.dispatch(entries, self.coupling_membership.as_mut());
         }
     }
 }

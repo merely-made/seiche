@@ -30,7 +30,16 @@ impl Physics {
         };
         // Move the real simulation out (swap in a throwaway empty one) so it can
         // be built-into the actor thread; `Simulation: Send` makes this sound.
-        let sim = std::mem::replace(&mut inline.sim, Simulation::new());
+        let mut sim = std::mem::replace(&mut inline.sim, Simulation::new());
+        // An entry handler cannot cross to the actor's thread: it stays here, and
+        // the simulation reports entries as events for it (the entry relay).
+        let handler = sim.take_coupling_entry_handler();
+        sim.set_coupling_entry_relay(handler.is_some());
+        let entry = entry_relay::EntryRelay::starting(
+            sim.coupling_binding_generation(),
+            sim.coupling_bindings(),
+            handler,
+        );
         let initial_settle = inline.ticks_remaining;
         let dragging = inline.dragging;
         let halted = inline.halted;
@@ -45,7 +54,7 @@ impl Physics {
             pace: speed::Pace::for_actor(
                 speed,
                 pace.ticks,
-                inline.pace.budget.map(|budget| budget.per_frame),
+                inline.pace.budget.map(|budget| budget.spec()),
             ),
         };
         let coupling_trace = sim.coupling_trace().cloned();
@@ -67,6 +76,7 @@ impl Physics {
             dial: speed,
             budget: inline.pace.budget,
             pace,
+            entry,
         });
     }
 
@@ -97,16 +107,16 @@ impl Physics {
     }
 
     /// Bound a frame's ticks above real time (see [`StepBudget`]). Offloaded,
-    /// the actor measures on its own clock and the host's is ignored.
+    /// only the allowance and the margin cross to the actor, which measures on
+    /// its own clock; the host's clock function is not sent.
     pub fn set_step_budget(&mut self, budget: Option<StepBudget>) {
         match self {
             Physics::Inline(p) => p.pace.budget = budget,
             #[cfg(feature = "actor")]
             Physics::Actor(p) => {
                 p.budget = budget;
-                p.handle.command(PhysicsCommand::SetStepBudget(
-                    budget.map(|budget| budget.per_frame),
-                ));
+                p.handle
+                    .command(PhysicsCommand::SetStepBudget(budget.map(|b| b.spec())));
             },
         }
     }

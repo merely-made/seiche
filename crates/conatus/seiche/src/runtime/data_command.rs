@@ -5,14 +5,15 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! `PhysicsCommand` <-> `DataCommand`: the commands whose payloads are plain
-//! data (`SetForceSet` among them) convert without loss; the rest (`SetForces`,
-//! `SetCouplingForces`, `SetCouplingEntryHandler`, `SetLaggedRepulsion`,
-//! `SetStepBudget`) are returned unchanged in `Err`.
+//! data (`SetForceSet`, `SetCouplingForces` as descriptors, `SetCouplingEntryRelay`
+//! and `SetStepBudget` among them) convert without loss; the rest (`SetForces`,
+//! `SetCouplingEntryHandler`, `SetLaggedRepulsion`) hold boxed forces, closures
+//! or a GPU solver, and are returned unchanged in `Err`.
 
 use seiche_model::DataCommand;
 
 use super::PhysicsCommand;
-use crate::{AffinitySpring, AnchorSpring};
+use crate::{AffinitySpring, AnchorSpring, CouplingForce};
 
 impl From<DataCommand> for PhysicsCommand {
     fn from(command: DataCommand) -> Self {
@@ -69,6 +70,11 @@ impl From<DataCommand> for PhysicsCommand {
             D::ClearEmitters => PhysicsCommand::ClearEmitters,
             D::SetSpeed(s) => PhysicsCommand::SetSpeed(s),
             D::SetForceSet(d) => PhysicsCommand::SetForceSet(d),
+            D::SetCouplingForces(d) => PhysicsCommand::SetCouplingForces(
+                d.iter().map(CouplingForce::from_descriptor).collect(),
+            ),
+            D::SetCouplingEntryRelay(on) => PhysicsCommand::SetCouplingEntryRelay(on),
+            D::SetStepBudget(b) => PhysicsCommand::SetStepBudget(b),
         }
     }
 }
@@ -130,11 +136,14 @@ impl TryFrom<PhysicsCommand> for DataCommand {
             P::ClearEmitters => DataCommand::ClearEmitters,
             P::SetSpeed(s) => DataCommand::SetSpeed(s),
             P::SetForceSet(d) => DataCommand::SetForceSet(d),
-            other @ (P::SetCouplingEntryHandler(_)
-            | P::SetCouplingForces(_)
-            | P::SetForces(_)
-            | P::SetLaggedRepulsion { .. }
-            | P::SetStepBudget(_)) => return Err(other),
+            P::SetCouplingForces(forces) => {
+                DataCommand::SetCouplingForces(forces.iter().map(CouplingForce::describe).collect())
+            },
+            P::SetCouplingEntryRelay(on) => DataCommand::SetCouplingEntryRelay(on),
+            P::SetStepBudget(b) => DataCommand::SetStepBudget(b),
+            other @ (P::SetCouplingEntryHandler(_) | P::SetForces(_) | P::SetLaggedRepulsion { .. }) => {
+                return Err(other);
+            },
         })
     }
 }

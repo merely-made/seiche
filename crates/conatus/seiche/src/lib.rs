@@ -497,6 +497,11 @@ pub struct Simulation {
     coupling_membership: coupling_membership::MembershipRuntime,
     coupling_membership_frame: Option<CouplingMembershipFrame>,
     coupling_entry_handler: Option<CouplingEntryHandler>,
+    /// Report entries as events (drained with
+    /// [`take_coupling_entry_events`](Simulation::take_coupling_entry_events))
+    /// instead of running `coupling_entry_handler` on this thread.
+    coupling_entry_relay: bool,
+    coupling_entry_events: Vec<seiche_model::CouplingEntryEvent>,
     /// The pairwise **affinity** force, if installed: a weighted attract-only spring that clusters
     /// structurally-similar nodes ("cluster by affinity"). Like the couplings it is a snapshot —
     /// the host rebuilds it wholesale via [`set_affinity_force`](Self::set_affinity_force) when the

@@ -36,6 +36,7 @@ pub const NODE_BODY_DENSITY: f32 = 0.001;
 pub mod catalog;
 pub mod command;
 pub mod composition;
+pub mod coupling;
 pub mod descriptor;
 pub mod edge_topology;
 pub mod field_clock;
@@ -56,6 +57,10 @@ pub use command::{AffinitySpec, AnchorSpec, DataCommand};
 pub use composition::{
     CHARGE_BETWEEN_WEIGHT, CompositionRefusal, GroupSource, PhysicsComposition, PhysicsGrouping,
 };
+pub use coupling::{
+    CouplingDescriptor, CouplingEligibility, CouplingEntryEvent, CouplingMembershipCause,
+    CouplingSource, CouplingTargetIdentity,
+};
 pub use descriptor::{
     ForceSetDescriptor, LAW_SEED, LawInputsData, LawSources, MeaningTable,
 };
@@ -65,7 +70,7 @@ pub use fluid::{Basin, ContactShape, Fluid, FluidContact, FluidParams};
 pub use node_body::{NodeCollider, NodeMaterial};
 pub use pace::{
     DEFAULT_BUDGET_SHARE, ElapsedStepConfig, ElapsedStepReport, FALLBACK_DISPLAY_PERIOD, PaceStats,
-    Speed, StepBudget, TICK_DT, TICK_DURATION, display_period,
+    Speed, StepBudget, StepBudgetSpec, TICK_DT, TICK_DURATION, display_period,
 };
 pub use roles::{Axes, Role, RoleTable};
 pub use scene_spec::{

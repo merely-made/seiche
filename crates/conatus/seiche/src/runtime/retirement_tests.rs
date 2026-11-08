@@ -20,6 +20,7 @@ fn retirement_rejects_stale_actor_layouts_but_ordinary_sync_keeps_the_epoch() {
     );
     let (updates_tx, updates) = mpsc::channel();
     let mut physics = Physics::Actor(ActorPhysics {
+        entry: Default::default(),
         field_clock: Default::default(),
         coupling_membership: None,
         coupling_trace: None,
@@ -55,6 +56,7 @@ fn retirement_rejects_stale_actor_layouts_but_ordinary_sync_keeps_the_epoch() {
         sim.seed_positions([(node, at)]);
         updates_tx
             .send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
                 field_clock: sim.field_clock(),
                 coupling_membership: None,
                 coupling_trace: None,

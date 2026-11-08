@@ -7,6 +7,7 @@
 //! Accepted simulation time, separate from lagged-result step age (F203).
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FieldClock {
     /// Sum of accepted tick intervals, before the tick when in a force context.
     pub elapsed: f64,

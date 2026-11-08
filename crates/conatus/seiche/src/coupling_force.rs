@@ -109,6 +109,46 @@ impl CouplingForce {
         }
     }
 
+    /// The force a [`CouplingDescriptor`] describes: every input of the
+    /// binding, as data. A `target_identities` list that does not match
+    /// `targets` in length is padded with `None` or cut to it, so one slot
+    /// belongs to every target. [`Self::describe`] is the inverse.
+    pub fn from_descriptor(descriptor: &seiche_model::CouplingDescriptor) -> Self {
+        let mut target_identities = descriptor.target_identities.clone();
+        target_identities.resize(descriptor.targets.len(), None);
+        Self {
+            binding: std::sync::Arc::new(crate::CouplingBinding {
+                response: descriptor.response.clone(),
+                strength: descriptor.strength,
+                animated: crate::field_clock::animated(&descriptor.field, &descriptor.registry),
+                field: descriptor.field.clone(),
+                extent: descriptor.extent.clone(),
+                registry: descriptor.registry.clone(),
+                targets: descriptor.targets.clone(),
+                selector: descriptor.selector.clone(),
+                source: descriptor.source,
+                target_identities,
+            }),
+        }
+    }
+
+    /// This force's inputs as data: what [`Self::from_descriptor`] builds it
+    /// from, and what crosses a message boundary in its place.
+    pub fn describe(&self) -> seiche_model::CouplingDescriptor {
+        let binding = &*self.binding;
+        seiche_model::CouplingDescriptor {
+            response: binding.response.clone(),
+            strength: binding.strength,
+            targets: binding.targets.clone(),
+            field: binding.field.clone(),
+            registry: binding.registry.clone(),
+            extent: binding.extent.clone(),
+            selector: binding.selector.clone(),
+            source: binding.source,
+            target_identities: binding.target_identities.clone(),
+        }
+    }
+
     /// Supply a registry so the field's `Sample` references resolve.
     pub fn with_registry(mut self, registry: FieldRegistry) -> Self {
         let binding = std::sync::Arc::make_mut(&mut self.binding);

@@ -38,17 +38,23 @@ impl Physics {
             },
         }
     }
-    /// Explicit owner callback. It runs on the simulation thread, only on a
-    /// known outside/non-candidate -> inside transition, never initial matches.
-    /// Its returned success/refusal is reported separately from physical writes.
+    /// Explicit owner callback, only on a known outside/non-candidate -> inside
+    /// transition, never initial matches. Its returned success/refusal is
+    /// reported separately from physical writes. Inline it runs inside the tick;
+    /// offloaded it stays on the host's side and runs when the update carrying
+    /// the entry is folded (`refresh`/`advance_frame`), one update later, the
+    /// simulation reporting entries as events (the entry relay). Clearing it
+    /// stops callbacks for entries still in flight.
     pub fn set_coupling_entry_handler(&mut self, handler: Option<crate::CouplingEntryHandler>) {
         match self {
             Self::Inline(p) => p.sim.set_coupling_entry_handler(handler),
             #[cfg(feature = "actor")]
             Self::Actor(p) => {
                 p.coupling_membership = None;
+                let relay = handler.is_some();
+                p.entry.set_handler(handler);
                 p.handle
-                    .command(PhysicsCommand::SetCouplingEntryHandler(handler));
+                    .command(PhysicsCommand::SetCouplingEntryRelay(relay));
                 p.barrier();
             },
         }

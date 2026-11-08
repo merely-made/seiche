@@ -16,6 +16,8 @@ path = "src/lib.rs"
 # NodeKey is petgraph's stable node index, as in seiche.
 petgraph = "0.8"
 euclid = "0.22"
+# The field types a coupling descriptor names (numen carries serde itself).
+numen = { path = "../numen", version = "0.2" }
 # Role's wire form (seiche's `serde` feature forwards here).
 serde = { version = "1", features = ["derive"], optional = true }
 

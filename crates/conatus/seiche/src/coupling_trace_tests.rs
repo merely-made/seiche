@@ -7,7 +7,7 @@
 use super::*;
 use crate::{CouplingInertReason, Physics};
 use euclid::default::Point2D;
-use numen::{ScalarField, VectorField};
+use numen::{CouplingId, FieldId, ScalarField, VectorField};
 use uuid::Uuid;
 
 fn source(id: u128) -> CouplingSource {

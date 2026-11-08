@@ -204,6 +204,7 @@ fn stale_actor_snapshots_cannot_undo_reseed_or_halt() {
     );
     let (updates_tx, updates) = mpsc::channel();
     let mut physics = Physics::Actor(ActorPhysics {
+        entry: Default::default(),
         field_clock: Default::default(),
         coupling_membership: None,
         coupling_trace: None,
@@ -230,6 +231,7 @@ fn stale_actor_snapshots_cannot_undo_reseed_or_halt() {
     sim.seed_positions(vec![(node, Point2D::new(-900.0, -800.0))]);
     updates_tx
         .send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
             field_clock: sim.field_clock(),
             coupling_membership: None,
             coupling_trace: None,
@@ -246,6 +248,7 @@ fn stale_actor_snapshots_cannot_undo_reseed_or_halt() {
     sim.seed_positions(vec![(node, resumed)]);
     updates_tx
         .send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
             field_clock: sim.field_clock(),
             coupling_membership: None,
             coupling_trace: None,
@@ -267,6 +270,7 @@ fn stale_actor_snapshots_cannot_undo_reseed_or_halt() {
     sim.seed_positions(vec![(node, Point2D::zero())]);
     updates_tx
         .send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
             field_clock: sim.field_clock(),
             coupling_membership: None,
             coupling_trace: None,

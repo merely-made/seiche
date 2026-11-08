@@ -42,6 +42,8 @@ impl Simulation {
             coupling_membership: Default::default(),
             coupling_membership_frame: None,
             coupling_entry_handler: None,
+            coupling_entry_relay: false,
+            coupling_entry_events: Vec::new(),
             affinity_force: None,
             anchor_force: None,
             repulsion: None,
@@ -369,13 +371,25 @@ impl Simulation {
             for (index, force) in self.coupling_forces.iter().enumerate() {
                 let samples = force.sample_points(&ctx);
                 if let Some(frame) = &mut self.coupling_membership_frame {
+                    let first = frame.reports.len();
                     self.coupling_membership.observe(
                         &force.binding,
                         &samples,
                         ctx.bodies_by_node,
                         frame,
                         self.coupling_entry_handler.as_ref(),
+                        self.coupling_entry_relay,
                     );
+                    if self.coupling_entry_relay {
+                        self.coupling_entry_events.extend(
+                            frame.reports[first..]
+                                .iter()
+                                .filter(|report| {
+                                    report.entry_action == crate::CouplingEntryOutcome::Pending
+                                })
+                                .map(|report| report.entry_event(index)),
+                        );
+                    }
                 }
                 if let Some(trace) = &mut self.coupling_trace {
                     force.apply_traced(&mut ctx, dt, index, trace, &samples);

@@ -111,9 +111,11 @@ pub(super) fn run(
         if moving || changed {
             generation = generation.wrapping_add(1);
             let settling = should_tick(&sim, state.ticks_remaining, state.dragging, state.halted);
+            let coupling_entries = sim.take_coupling_entry_events();
             let mut snapshot = sim.snapshot(generation);
             speed::draw(&mut state.pace, &mut snapshot, settling);
             out.emit(PhysicsUpdate {
+                coupling_entries,
                 field_clock: sim.field_clock(),
                 coupling_membership: membership_mailbox
                     .publish(generation, sim.coupling_membership()),
@@ -177,9 +179,10 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
                 state.pace.previous = None;
             }
         },
-        PhysicsCommand::SetStepBudget(per_frame) => {
-            state.pace.budget = Some(speed::actor_budget(per_frame));
+        PhysicsCommand::SetStepBudget(spec) => {
+            state.pace.budget = Some(speed::actor_budget(spec));
         },
+        PhysicsCommand::SetCouplingEntryRelay(on) => sim.set_coupling_entry_relay(on),
         PhysicsCommand::SetCouplingForces(forces) => sim.set_coupling_forces(forces),
         PhysicsCommand::SetCouplingTraceLimit(limit) => sim.set_coupling_trace_limit(limit),
         PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),

@@ -84,8 +84,13 @@ impl Physics {
             Physics::Actor(p) => {
                 p.coupling_trace = None;
                 p.coupling_membership = None;
+                let bindings = forces
+                    .iter()
+                    .map(|force| std::sync::Arc::clone(&force.binding))
+                    .collect();
                 p.handle.command(PhysicsCommand::SetCouplingForces(forces));
                 p.barrier();
+                p.entry.listed(p.command_epoch, bindings);
             },
         }
     }

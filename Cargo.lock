@@ -6562,6 +6562,7 @@ name = "seiche-model"
 version = "0.0.1"
 dependencies = [
  "euclid",
+ "numen",
  "petgraph 0.8.3",
  "serde",
 ]

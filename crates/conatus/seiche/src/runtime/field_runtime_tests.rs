@@ -133,6 +133,7 @@ fn field_runtime_actor_reset_rejects_delayed_clock_and_membership_evidence() {
     sim.tick(0.5);
     let mut view = sim.view();
     let mut physics = Physics::Actor(ActorPhysics {
+        entry: Default::default(),
         handle,
         updates,
         field_clock: sim.field_clock(),
@@ -149,6 +150,7 @@ fn field_runtime_actor_reset_rejects_delayed_clock_and_membership_evidence() {
     physics.reset_field_runtime(vec![(node, Point2D::zero())]);
     let mailbox = super::membership_delivery::MembershipMailbox::default();
     tx.send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
         field_clock: sim.field_clock(),
         coupling_membership: mailbox.publish(1, sim.coupling_membership()),
         coupling_trace: None,

@@ -18,6 +18,36 @@ impl Simulation {
         self.coupling_entry_handler = handler;
         self.coupling_membership_frame = None;
     }
+    /// Report entries as events (for [`take_coupling_entry_events`](Self::take_coupling_entry_events))
+    /// instead of running the installed handler here: the owner's side runs
+    /// its handler when the events reach it. Clears the latest frame, as
+    /// installing a handler does.
+    pub fn set_coupling_entry_relay(&mut self, relay: bool) {
+        self.coupling_entry_relay = relay;
+        self.coupling_membership_frame = None;
+    }
+    /// Remove and return the installed handler, so its owner can run it on its
+    /// own side of a relay.
+    pub fn take_coupling_entry_handler(&mut self) -> Option<crate::CouplingEntryHandler> {
+        self.coupling_membership_frame = None;
+        self.coupling_entry_handler.take()
+    }
+    /// The entries observed since the last call, in observation order. Empty
+    /// unless the relay is on.
+    pub fn take_coupling_entry_events(&mut self) -> Vec<seiche_model::CouplingEntryEvent> {
+        std::mem::take(&mut self.coupling_entry_events)
+    }
+    /// The generation of the live coupling list: one more for every list set.
+    pub fn coupling_binding_generation(&self) -> u64 {
+        self.coupling_binding_generation
+    }
+    /// The live couplings' bindings, in list order.
+    pub fn coupling_bindings(&self) -> Vec<std::sync::Arc<crate::CouplingBinding>> {
+        self.coupling_forces
+            .iter()
+            .map(|force| std::sync::Arc::clone(&force.binding))
+            .collect()
+    }
     pub fn coupling_membership(&self) -> Option<&crate::CouplingMembershipFrame> {
         self.coupling_membership_frame.as_ref()
     }

@@ -13,22 +13,7 @@ use std::{
     sync::Arc,
 };
 
-/// Query candidacy and spatial eligibility remain distinct. An unresolved
-/// extent or absent/invalid point must not be reported as outside the field.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CouplingEligibility {
-    Inside,
-    Outside,
-    NotCandidate,
-    MissingBody,
-    UnsupportedExtent,
-    InvalidPoint,
-}
-impl CouplingEligibility {
-    fn resolved(self) -> bool {
-        matches!(self, Self::Inside | Self::Outside | Self::NotCandidate)
-    }
-}
+pub use seiche_model::CouplingEligibility;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CouplingMembershipChange {
@@ -39,16 +24,7 @@ pub enum CouplingMembershipChange {
     Unchanged,
 }
 
-/// Several changes can coincide. These flags describe observed input changes,
-/// not a guessed UI gesture; movement is used when binding inputs did not change.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CouplingMembershipCause {
-    pub field_edit: bool,
-    pub query_change: bool,
-    pub source_change: bool,
-    pub movement: bool,
-    pub reset: bool,
-}
+pub use seiche_model::CouplingMembershipCause;
 
 /// A callback is explicitly installed by the owner. Unknown applets/responses
 /// are not implicitly executed. Completed means the callback returned success;
@@ -165,6 +141,7 @@ impl MembershipRuntime {
         bodies: &HashMap<NodeKey, RigidBodyHandle>,
         frame: &mut CouplingMembershipFrame,
         handler: Option<&CouplingEntryHandler>,
+        relay: bool,
     ) {
         let identity_ambiguous = self.ambiguous.contains(&owner(binding));
         let key = self.key(binding);
@@ -247,7 +224,7 @@ impl MembershipRuntime {
                     cause: actual_cause,
                 },
                 frame,
-                handler,
+                Entry { handler, relay },
                 identity_ambiguous,
             ));
             members.seen.insert(
@@ -299,7 +276,7 @@ impl MembershipRuntime {
                         cause: departed_cause,
                     },
                     frame,
-                    handler,
+                    Entry { handler, relay },
                     identity_ambiguous,
                 ));
             }
@@ -344,12 +321,19 @@ struct Observation {
     eligibility: CouplingEligibility,
     cause: CouplingMembershipCause,
 }
+/// How an entry is acted on: by the installed handler on this thread, or left
+/// pending for the owner's side to run (the relay).
+#[derive(Clone, Copy)]
+struct Entry<'a> {
+    handler: Option<&'a CouplingEntryHandler>,
+    relay: bool,
+}
 fn report(
     binding: &Arc<CouplingBinding>,
     appearance: Appearance,
     observation: Observation,
     frame: &CouplingMembershipFrame,
-    handler: Option<&CouplingEntryHandler>,
+    entry: Entry<'_>,
     identity_ambiguous: bool,
 ) -> CouplingMembershipReport {
     let Observation {
@@ -395,8 +379,11 @@ fn report(
             CouplingEntryOutcome::Refused("coupling identity has multiple live bindings".into());
     } else if change == Entered {
         report.entry_action = CouplingEntryOutcome::Pending;
+        if entry.relay {
+            return report;
+        }
         report.entry_action =
-            handler.map_or(
+            entry.handler.map_or(
                 CouplingEntryOutcome::NotRegistered,
                 |handler| match handler(&report) {
                     Ok(()) => CouplingEntryOutcome::Completed,
@@ -405,4 +392,24 @@ fn report(
             );
     }
     report
+}
+
+impl CouplingMembershipReport {
+    /// This entry as the event a relay reports; `coupling` is the binding's
+    /// index in the live list.
+    pub(crate) fn entry_event(&self, coupling: usize) -> seiche_model::CouplingEntryEvent {
+        seiche_model::CouplingEntryEvent {
+            step: self.step,
+            clock: self.clock,
+            binding_generation: self.binding_generation,
+            coupling,
+            node: self.node,
+            identity: self.identity,
+            target_index: self.target_index,
+            reference_point: self.reference_point,
+            previous: self.previous,
+            eligibility: self.eligibility,
+            cause: self.cause,
+        }
+    }
 }

@@ -103,11 +103,15 @@ impl Default for Pace {
 impl Pace {
     /// The actor's pace, carried over from the inline backend it replaces.
     #[cfg(feature = "actor")]
-    pub(super) fn for_actor(speed: Speed, ticks: u64, per_frame: Option<Duration>) -> Self {
+    pub(super) fn for_actor(
+        speed: Speed,
+        ticks: u64,
+        budget: Option<seiche_model::StepBudgetSpec>,
+    ) -> Self {
         Self {
             speed,
             ticks,
-            budget: Some(actor_budget(per_frame)),
+            budget: Some(actor_budget(budget)),
             ..Self::default()
         }
     }
@@ -303,19 +307,22 @@ pub(super) fn actor_interval(
     }
 }
 
-/// The actor's budget: `per_frame`, or its whole interval, on its own clock,
-/// which reads `Instant`, fine enough to need no margin.
+/// The actor's budget: the spec's `per_frame` and `margin`, or its whole
+/// interval with no margin, on its own clock, which reads `Instant`.
 #[cfg(feature = "actor")]
-pub(super) fn actor_budget(per_frame: Option<Duration>) -> StepBudget {
+pub(super) fn actor_budget(spec: Option<seiche_model::StepBudgetSpec>) -> StepBudget {
     fn clock() -> Duration {
         static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
         START.get_or_init(std::time::Instant::now).elapsed()
     }
-    StepBudget {
-        per_frame: per_frame.unwrap_or(TICK_DURATION),
-        clock,
-        margin: Duration::ZERO,
-    }
+    spec.map_or(
+        StepBudget {
+            per_frame: TICK_DURATION,
+            clock,
+            margin: Duration::ZERO,
+        },
+        |spec| StepBudget::from_spec(spec, clock),
+    )
 }
 
 /// One deterministic frame-equivalent ([`TICK_DURATION`]) at the speed: the

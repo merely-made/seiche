@@ -8,15 +8,60 @@ use std::num::NonZeroUsize;
 
 use euclid::default::Point2D;
 use seiche_model::{
-    AffinitySpec, AnchorSpec, Axes, Basin, DataCommand, EdgeTopology, FluidParams,
+    AffinitySpec, AnchorSpec, Axes, Basin, CouplingDescriptor, CouplingSource,
+    CouplingTargetIdentity, DataCommand, EdgeTopology, FluidParams,
     ForceSetDescriptor, LawInputsData, LawSources, NodeCollider, NodeKey, NodeMaterial, PhysicsLaw,
-    PhysicsOverlay, SceneEmitter, SceneField, Speed, StaticObstacle,
+    PhysicsOverlay, SceneEmitter, SceneField, Speed, StaticObstacle, StepBudgetSpec,
 };
 
 use super::*;
+use crate::StepBudget;
 
 fn k(i: usize) -> NodeKey {
     NodeKey::new(i)
+}
+
+/// A descriptor with every field set to something other than its default.
+pub(crate) fn coupling_descriptor() -> CouplingDescriptor {
+    use numen::{
+        CouplingId, CouplingResponse, FieldDefinition, FieldExtent, FieldId, FieldRegistry,
+        NodeSelector, ScalarField,
+    };
+    let mut registry = FieldRegistry::new();
+    let sampled = registry.insert_scalar("well", ScalarField::Const(2.5));
+    CouplingDescriptor {
+        response: CouplingResponse::open("mere://test/descriptor"),
+        strength: 0.75,
+        targets: vec![k(0), k(2), k(2)],
+        field: FieldDefinition::Scalar(ScalarField::Add(
+            Box::new(ScalarField::Sample(sampled)),
+            Box::new(ScalarField::Time),
+        )),
+        registry,
+        extent: FieldExtent::Region {
+            min_x: -10.0,
+            min_y: -20.0,
+            max_x: 30.0,
+            max_y: 40.0,
+        },
+        selector: Some(NodeSelector::Tagged("hot".into())),
+        source: Some(CouplingSource {
+            field: FieldId::from_uuid(uuid::Uuid::from_u128(11)),
+            coupling: CouplingId::from_uuid(uuid::Uuid::from_u128(12)),
+            revision: Some(7),
+        }),
+        target_identities: vec![
+            Some(CouplingTargetIdentity {
+                member: 21,
+                occurrence: None,
+            }),
+            None,
+            Some(CouplingTargetIdentity {
+                member: 22,
+                occurrence: Some(23),
+            }),
+        ],
+    }
 }
 
 /// One of every data command, with non-default payloads.
@@ -106,6 +151,12 @@ fn samples() -> Vec<DataCommand> {
         }),
         DataCommand::ClearEmitters,
         DataCommand::SetSpeed(Speed::from_factor(2.0)),
+        DataCommand::SetCouplingForces(vec![coupling_descriptor()]),
+        DataCommand::SetCouplingEntryRelay(true),
+        DataCommand::SetStepBudget(Some(StepBudgetSpec {
+            per_frame: std::time::Duration::from_micros(8_333),
+            margin: std::time::Duration::from_micros(500),
+        })),
         DataCommand::SetForceSet(ForceSetDescriptor {
             law: PhysicsLaw::Charge,
             composition: None,
@@ -125,7 +176,7 @@ fn samples() -> Vec<DataCommand> {
 #[test]
 fn every_data_command_round_trips_through_physics_command() {
     let samples = samples();
-    assert_eq!(samples.len(), 31, "one sample per data command");
+    assert_eq!(samples.len(), 34, "one sample per data command");
     for command in samples {
         let before = format!("{command:?}");
         let physics: PhysicsCommand = command.into();
@@ -139,9 +190,12 @@ fn every_data_command_round_trips_through_physics_command() {
 fn the_non_data_commands_come_back_unchanged() {
     for command in [
         PhysicsCommand::SetForces(Vec::new()),
-        PhysicsCommand::SetCouplingForces(Vec::new()),
         PhysicsCommand::SetCouplingEntryHandler(None),
-        PhysicsCommand::SetStepBudget(None),
+        PhysicsCommand::SetLaggedRepulsion {
+            solver: None,
+            threshold: 1,
+            max_stale_steps: 1,
+        },
     ] {
         assert!(DataCommand::try_from(command).is_err());
     }
@@ -156,4 +210,62 @@ fn every_data_command_survives_its_wire_form() {
         let back: DataCommand = serde_json::from_str(&wire).expect("deserialize");
         assert_eq!(before, format!("{back:?}"), "{wire}");
     }
+}
+
+/// A descriptor builds a force whose binding is the one the builder chain
+/// makes, and describing the force gives the descriptor back.
+#[test]
+fn a_coupling_descriptor_builds_the_same_force_as_the_builder_chain() {
+    let d = coupling_descriptor();
+    let from_data = CouplingForce::from_descriptor(&d);
+    let by_hand = CouplingForce::new(
+        d.response.clone(),
+        d.strength,
+        d.targets.iter().copied(),
+        d.field.clone(),
+    )
+    .with_registry(d.registry.clone())
+    .with_extent(d.extent.clone())
+    .with_selector(d.selector.clone().unwrap())
+    .with_provenance(d.source.unwrap(), |slot, _| d.target_identities[slot]);
+    assert_eq!(from_data.binding(), by_hand.binding());
+    assert!(from_data.binding().animated, "the Time term is seen through the registry");
+    assert_eq!(from_data.describe(), d);
+}
+
+/// A descriptor whose identities do not match its targets still builds a
+/// binding with one slot per target (the membership walk indexes them).
+#[test]
+fn a_coupling_descriptor_with_mismatched_identities_is_normalised() {
+    let mut d = coupling_descriptor();
+    d.target_identities.truncate(1);
+    assert_eq!(
+        CouplingForce::from_descriptor(&d).binding().target_identities.len(),
+        d.targets.len()
+    );
+    d.target_identities = vec![None; 9];
+    assert_eq!(
+        CouplingForce::from_descriptor(&d).binding().target_identities.len(),
+        d.targets.len()
+    );
+}
+
+/// The budget's data form keeps the allowance and the margin; the clock is
+/// whoever runs the step's.
+#[test]
+fn a_step_budget_spec_carries_the_allowance_and_margin_and_takes_any_clock() {
+    use std::time::Duration;
+    fn clock() -> Duration {
+        Duration::from_millis(5)
+    }
+    let budget = StepBudget {
+        per_frame: Duration::from_micros(8_333),
+        clock,
+        margin: Duration::from_micros(250),
+    };
+    let spec = budget.spec();
+    assert_eq!(spec.per_frame, budget.per_frame);
+    assert_eq!(spec.margin, budget.margin);
+    let back = StepBudget::from_spec(spec, clock);
+    assert_eq!((back.per_frame, back.margin, (back.clock)()), (budget.per_frame, budget.margin, clock()));
 }

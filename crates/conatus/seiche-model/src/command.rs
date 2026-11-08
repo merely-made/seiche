@@ -8,7 +8,7 @@
 //! simulation whose payload is plain values.
 //!
 //! `seiche`'s `PhysicsCommand` mixes these with commands that carry boxed
-//! forces, closures and function pointers. Those cannot cross a thread-less
+//! forces and closures. Those cannot cross a thread-less
 //! message boundary; these can. With the `serde` feature each [`DataCommand`]
 //! has a wire form, and `seiche` converts to and from `PhysicsCommand`
 //! without loss (a round-trip test per variant).
@@ -21,8 +21,8 @@ use std::num::NonZeroUsize;
 use euclid::default::Point2D;
 
 use crate::{
-    Axes, Basin, EdgeTopology, FluidParams, ForceSetDescriptor, NodeCollider, NodeKey,
-    NodeMaterial, SceneEmitter, SceneField, SceneSpec, Speed, StaticObstacle,
+    Axes, Basin, CouplingDescriptor, EdgeTopology, FluidParams, ForceSetDescriptor, NodeCollider, NodeKey,
+    NodeMaterial, SceneEmitter, SceneField, SceneSpec, Speed, StaticObstacle, StepBudgetSpec,
 };
 
 /// An anchor spring as data: each node's anchor, the stiffness and the slack.
@@ -127,4 +127,14 @@ pub enum DataCommand {
     /// Replace the law's force set wholesale, from its descriptor: the engine
     /// builds the forces (`seiche::catalog::build_force_set`).
     SetForceSet(ForceSetDescriptor),
+    /// Replace the live field couplings wholesale, from their descriptors: the
+    /// engine builds the forces (`CouplingForce::from_descriptor`).
+    SetCouplingForces(Vec<CouplingDescriptor>),
+    /// Report coupling entries as events in the update stream (`true`) instead
+    /// of running an entry handler on the simulation's thread. The owner's side
+    /// runs its handler when the events arrive.
+    SetCouplingEntryRelay(bool),
+    /// Bound a frame's ticks above real time; `None` is the interval itself.
+    /// The clock is the runner's, not part of the command.
+    SetStepBudget(Option<StepBudgetSpec>),
 }

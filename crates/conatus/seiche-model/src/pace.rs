@@ -81,6 +81,17 @@ pub struct StepBudget {
     pub margin: Duration,
 }
 
+/// A [`StepBudget`] as data: the allowance and the forecast margin, without the
+/// clock. Whoever runs the step picks the clock: a native actor reads
+/// `Instant`, a browser Worker `performance.now`, an inline host the function
+/// it gave in its [`StepBudget`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StepBudgetSpec {
+    pub per_frame: Duration,
+    pub margin: Duration,
+}
+
 /// The share of the display's frame period a frame's ticks above real time
 /// may spend unless the host asks otherwise (ruled 2026-10-04, "Target + Max,
 /// budget as frame share": 50%).
@@ -103,6 +114,23 @@ pub fn display_period(millihertz: Option<u32>) -> Duration {
 }
 
 impl StepBudget {
+    /// The data half of this budget: the allowance and the margin.
+    pub fn spec(&self) -> StepBudgetSpec {
+        StepBudgetSpec {
+            per_frame: self.per_frame,
+            margin: self.margin,
+        }
+    }
+
+    /// `spec` read on `clock`, the clock of whoever runs the step.
+    pub fn from_spec(spec: StepBudgetSpec, clock: fn() -> Duration) -> Self {
+        Self {
+            per_frame: spec.per_frame,
+            clock,
+            margin: spec.margin,
+        }
+    }
+
     /// `share` of a display's frame `period`, measured on `clock`, the gate
     /// keeping `margin` past the forecast tick.
     pub fn of_period(

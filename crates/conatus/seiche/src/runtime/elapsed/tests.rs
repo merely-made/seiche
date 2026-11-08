@@ -217,6 +217,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
     );
     let (updates_tx, updates) = mpsc::channel();
     let mut physics = Physics::Actor(ActorPhysics {
+        entry: Default::default(),
         field_clock: Default::default(),
         coupling_membership: None,
         coupling_trace: None,
@@ -237,6 +238,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
     let mut view = LayoutView::new();
     updates_tx
         .send(PhysicsUpdate {
+        coupling_entries: Vec::new(),
             field_clock: sim.field_clock(),
             coupling_membership: None,
             coupling_trace: None,

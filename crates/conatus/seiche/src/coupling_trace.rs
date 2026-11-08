@@ -7,7 +7,7 @@
 //! Bounded observations of the live coupling slot, before integration.
 use std::{num::NonZeroUsize, sync::Arc};
 
-use numen::{CouplingId, CouplingResponse, FieldDefinition, FieldExtent, FieldId, FieldRegistry};
+use numen::{CouplingResponse, FieldDefinition, FieldExtent, FieldRegistry};
 use rapier2d::prelude::*;
 
 use crate::{CouplingEffect, CouplingEvaluation, CouplingForce, ForceContext, NodeKey, Simulation};
@@ -30,23 +30,7 @@ impl PartialEq for CouplingTraceSession {
 }
 impl Eq for CouplingTraceSession {}
 
-/// Authored owner identities supplied by the adapter. The revision is a hint,
-/// not a digest: the binding retains the actual definition and registry too.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CouplingSource {
-    pub field: FieldId,
-    pub coupling: CouplingId,
-    pub revision: Option<u64>,
-}
-
-/// Stable identity supplied by the body owner. `member` names the owner member,
-/// not necessarily a content resource. An occurrence is only claimed when the
-/// adapter has one; graph-node bodies must not invent occurrence identities.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CouplingTargetIdentity {
-    pub member: u128,
-    pub occurrence: Option<u128>,
-}
+pub use seiche_model::{CouplingSource, CouplingTargetIdentity};
 
 /// The exact immutable input snapshot used by one compiled force. Trace rows
 /// retain this Arc across rebuilds; they never look up today's graph by index.
