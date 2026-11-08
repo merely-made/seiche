@@ -90,6 +90,9 @@ pub struct LawInputs<'a> {
     meaning: Option<MeaningGroups<'a>>,
     /// The cache serving the physics view.
     channels: Option<Box<dyn Channels + 'a>>,
+    /// The host's token for the node and edge lists (see
+    /// [`LawInputsData::revision`]); it travels in a descriptor.
+    revision: Option<u64>,
 }
 
 impl<'a> LawInputs<'a> {
@@ -107,6 +110,7 @@ impl<'a> LawInputs<'a> {
             clusters: None,
             meaning: None,
             channels: None,
+            revision: None,
         }
     }
 
@@ -117,6 +121,7 @@ impl<'a> LawInputs<'a> {
             data.edges.clone(),
             data.sites.iter().cloned().collect(),
         )
+        .with_revision(data.revision)
         .with_clusters(data.clusters.clone().map(Cow::Owned))
         .with_meaning(data.meaning.clone().map(|table| MeaningGroups {
             groups: Cow::Owned(table.groups),
@@ -140,7 +145,16 @@ impl<'a> LawInputs<'a> {
                 groups: m.groups.to_vec(),
                 unknown: m.unknown,
             }),
+            revision: self.revision,
         }
+    }
+
+    /// Name the node and edge lists with the host's token (see
+    /// [`LawInputsData::revision`]).
+    #[must_use]
+    pub fn with_revision(mut self, revision: Option<u64>) -> Self {
+        self.revision = revision;
+        self
     }
 
     /// The force set this build would make, as a descriptor

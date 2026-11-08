@@ -102,16 +102,16 @@ impl Default for Pace {
 
 impl Pace {
     /// The actor's pace, carried over from the inline backend it replaces.
-    #[cfg(feature = "actor")]
     pub(super) fn for_actor(
         speed: Speed,
         ticks: u64,
         budget: Option<seiche_model::StepBudgetSpec>,
+        clock: fn() -> Duration,
     ) -> Self {
         Self {
             speed,
             ticks,
-            budget: Some(actor_budget(budget)),
+            budget: Some(actor_budget(budget, clock)),
             ..Self::default()
         }
     }
@@ -275,7 +275,6 @@ pub(super) fn draw(pace: &mut Pace, snapshot: &mut LayoutSnapshot, settling: boo
 
 /// The actor's interval: owe one [`TICK_DURATION`], run what it pays for under
 /// the budget, and meter the `wall_ns` the last interval took.
-#[cfg(feature = "actor")]
 pub(super) fn actor_interval(
     sim: &mut Simulation,
     pace: &mut Pace,
@@ -308,13 +307,12 @@ pub(super) fn actor_interval(
 }
 
 /// The actor's budget: the spec's `per_frame` and `margin`, or its whole
-/// interval with no margin, on its own clock, which reads `Instant`.
-#[cfg(feature = "actor")]
-pub(super) fn actor_budget(spec: Option<seiche_model::StepBudgetSpec>) -> StepBudget {
-    fn clock() -> Duration {
-        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-        START.get_or_init(std::time::Instant::now).elapsed()
-    }
+/// interval with no margin, measured on `clock`, the clock of whoever runs the
+/// step (a thread reads `Instant`, a Worker `performance.now`).
+pub(super) fn actor_budget(
+    spec: Option<seiche_model::StepBudgetSpec>,
+    clock: fn() -> Duration,
+) -> StepBudget {
     spec.map_or(
         StepBudget {
             per_frame: TICK_DURATION,
@@ -323,6 +321,15 @@ pub(super) fn actor_budget(spec: Option<seiche_model::StepBudgetSpec>) -> StepBu
         },
         |spec| StepBudget::from_spec(spec, clock),
     )
+}
+
+/// The clock of an actor thread: time since the first reading, on `Instant`
+/// (which panics on `wasm32-unknown-unknown`, where no thread runs and a Worker
+/// brings its own clock).
+#[cfg(feature = "actor")]
+pub(super) fn thread_clock() -> Duration {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed()
 }
 
 /// One deterministic frame-equivalent ([`TICK_DURATION`]) at the speed: the

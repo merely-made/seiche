@@ -48,6 +48,8 @@ pub mod roles;
 pub mod scene_spec;
 pub mod terms;
 pub mod view;
+#[cfg(feature = "wire")]
+pub mod wire;
 
 pub use catalog::{
     Admission, DENSITY_ADMITS, DENSITY_REFUSAL, OverlayRefusal, PhysicsDepthSource,

@@ -168,6 +168,7 @@ fn samples() -> Vec<DataCommand> {
                 sites: vec![(NodeKey::new(0), "a".into()), (NodeKey::new(1), "b".into())],
                 clusters: None,
                 meaning: None,
+                revision: Some(7),
             },
         }),
     ]
@@ -268,4 +269,19 @@ fn a_step_budget_spec_carries_the_allowance_and_margin_and_takes_any_clock() {
     assert_eq!(spec.margin, budget.margin);
     let back = StepBudget::from_spec(spec, clock);
     assert_eq!((back.per_frame, back.margin, (back.clock)()), (budget.per_frame, budget.margin, clock()));
+}
+
+/// The same samples through the Worker's codec (postcard writes no field names
+/// and refuses formats serde-json forgives, so JSON passing proves less).
+#[test]
+fn every_data_command_survives_the_postcard_wire() {
+    use seiche_model::wire::{ToWorker, decode, encode};
+    for command in samples() {
+        let before = format!("{command:?}");
+        let bytes = encode(&ToWorker::Command(command));
+        let Ok(ToWorker::Command(back)) = decode::<ToWorker>(&bytes) else {
+            panic!("{before} did not decode");
+        };
+        assert_eq!(before, format!("{back:?}"));
+    }
 }

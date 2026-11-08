@@ -134,8 +134,7 @@ fn field_runtime_actor_reset_rejects_delayed_clock_and_membership_evidence() {
     let mut view = sim.view();
     let mut physics = Physics::Actor(ActorPhysics {
         entry: Default::default(),
-        handle,
-        updates,
+        link: Link::Thread { handle, updates },
         field_clock: sim.field_clock(),
         coupling_membership: sim.coupling_membership().cloned(),
         coupling_trace: None,

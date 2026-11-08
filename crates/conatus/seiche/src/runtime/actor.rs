@@ -7,12 +7,16 @@
 //! The actor half of the runtime: the thread body that owns an offloaded
 //! [`Simulation`], applies [`PhysicsCommand`]s and paces its intervals.
 
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::time::Duration;
 
-use armillary::Emitter;
-
-use super::{PhysicsCommand, PhysicsUpdate, Speed, TICK_DURATION, should_tick, speed};
+use super::{PhysicsCommand, Speed, speed};
 use crate::Simulation;
+#[cfg(feature = "actor")]
+use super::{PhysicsUpdate, TICK_DURATION, should_tick};
+#[cfg(feature = "actor")]
+use armillary::Emitter;
+#[cfg(feature = "actor")]
+use std::sync::mpsc::{Receiver, TryRecvError};
 
 /// The actor's settle/drag state beside its simulation.
 pub(super) struct ActorState {
@@ -21,9 +25,11 @@ pub(super) struct ActorState {
     pub(super) halted: bool,
     pub(super) command_epoch: u64,
     pub(super) pace: speed::Pace,
+    /// The clock the step budget reads: whoever runs the step picks it.
+    pub(super) clock: fn() -> Duration,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "actor"))]
 impl ActorState {
     /// A real-time actor state with no pace carried over (tests).
     pub(super) fn fresh(ticks_remaining: u32, dragging: bool, halted: bool) -> Self {
@@ -32,7 +38,8 @@ impl ActorState {
             dragging,
             halted,
             command_epoch: 0,
-            pace: speed::Pace::for_actor(Speed::REAL_TIME, 0, None),
+            pace: speed::Pace::for_actor(Speed::REAL_TIME, 0, None, speed::thread_clock),
+            clock: speed::thread_clock,
         }
     }
 }
@@ -42,6 +49,7 @@ impl ActorState {
 /// speed owes (up to the budget), one snapshot, then sleep out the interval.
 /// Parks on `recv` when idle (no busy-spin), and ends when the command channel
 /// closes (the handle drops).
+#[cfg(feature = "actor")]
 pub(super) fn run(
     mut sim: Simulation,
     mut state: ActorState,
@@ -137,7 +145,7 @@ pub(super) fn run(
 }
 
 /// Fold one command into the actor's simulation + settle/drag state.
-fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
+pub(super) fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
     match cmd {
         PhysicsCommand::SyncNodes(nodes) => sim.sync_nodes(nodes),
         PhysicsCommand::SyncNodesRetiring { nodes, retired } => {
@@ -180,7 +188,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
             }
         },
         PhysicsCommand::SetStepBudget(spec) => {
-            state.pace.budget = Some(speed::actor_budget(spec));
+            state.pace.budget = Some(speed::actor_budget(spec, state.clock));
         },
         PhysicsCommand::SetCouplingEntryRelay(on) => sim.set_coupling_entry_relay(on),
         PhysicsCommand::SetCouplingForces(forces) => sim.set_coupling_forces(forces),
@@ -222,7 +230,7 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "actor"))]
 mod tests {
     use std::sync::Arc;
 

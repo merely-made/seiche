@@ -6564,7 +6564,9 @@ dependencies = [
  "euclid",
  "numen",
  "petgraph 0.8.3",
+ "postcard",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

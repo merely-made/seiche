@@ -38,7 +38,7 @@ petgraph = "0.8"
 numen = { path = "../numen", version = "0.2" }
 # The rapier-free model (node keys, colliders, scene specs, roles, the layout view),
 # re-exported here under the old paths.
-seiche-model = { path = "../seiche-model", version = "0.0.1" }
+seiche-model = { path = "../seiche-model", version = "0.0.1", features = ["wire"] }
 euclid = "0.22"
 tracing = "0.1"
 # The off-thread half of the `runtime` module: the actor harness a host offloads

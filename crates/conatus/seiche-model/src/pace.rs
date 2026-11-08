@@ -173,6 +173,7 @@ pub fn monotonic_clock() -> Duration {
 /// effective speed over the last frames while moving (`None` at rest), and
 /// whether the budget cut the last frame short.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PaceStats {
     pub ticks: u64,
     pub effective_speed: Option<f32>,

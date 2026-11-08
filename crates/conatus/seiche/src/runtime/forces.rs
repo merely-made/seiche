@@ -11,9 +11,8 @@ impl Physics {
     pub fn sync_nodes(&mut self, nodes: Vec<(NodeKey, Point2D<f32>)>) {
         match self {
             Physics::Inline(p) => p.sim.sync_nodes(nodes),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SyncNodes(nodes));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SyncNodes(nodes));
             },
         }
     }
@@ -31,11 +30,10 @@ impl Physics {
         }
         match self {
             Physics::Inline(p) => p.sim.sync_nodes_retiring(nodes, retired),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
                 p.coupling_membership = None;
-                p.handle
+                p.link
                     .command(PhysicsCommand::SyncNodesRetiring { nodes, retired });
                 p.barrier();
             },
@@ -51,9 +49,8 @@ impl Physics {
     pub fn sync_edge_topology(&mut self, topology: EdgeTopology) {
         match self {
             Physics::Inline(p) => p.sim.sync_edge_topology(topology),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SyncEdgeTopology(topology));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SyncEdgeTopology(topology));
             },
         }
     }
@@ -65,9 +62,8 @@ impl Physics {
                 p.sim.seed_positions(positions);
                 p.pace.forget();
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::Seed(positions));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::Seed(positions));
                 p.barrier();
             },
         }
@@ -80,15 +76,14 @@ impl Physics {
     pub fn set_coupling_forces(&mut self, forces: Vec<CouplingForce>) {
         match self {
             Physics::Inline(p) => p.sim.set_coupling_forces(forces),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
                 p.coupling_membership = None;
                 let bindings = forces
                     .iter()
                     .map(|force| std::sync::Arc::clone(&force.binding))
                     .collect();
-                p.handle.command(PhysicsCommand::SetCouplingForces(forces));
+                p.link.command(PhysicsCommand::SetCouplingForces(forces));
                 p.barrier();
                 p.entry.listed(p.command_epoch, bindings);
             },
@@ -100,10 +95,9 @@ impl Physics {
     pub fn set_coupling_trace_limit(&mut self, limit: Option<std::num::NonZeroUsize>) {
         match self {
             Physics::Inline(p) => p.sim.set_coupling_trace_limit(limit),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.coupling_trace = None;
-                p.handle
+                p.link
                     .command(PhysicsCommand::SetCouplingTraceLimit(limit));
                 p.barrier();
             },
@@ -116,8 +110,7 @@ impl Physics {
     pub fn coupling_trace(&self) -> Option<&crate::CouplingTrace> {
         match self {
             Physics::Inline(p) => p.sim.coupling_trace(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.coupling_trace.as_ref(),
+                        Physics::Actor(p) | Physics::Remote(p) => p.coupling_trace.as_ref(),
         }
     }
 
@@ -127,9 +120,8 @@ impl Physics {
     pub fn set_affinity_force(&mut self, force: Option<AffinitySpring>) {
         match self {
             Physics::Inline(p) => p.sim.set_affinity_force(force),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetAffinityForce(force));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetAffinityForce(force));
             },
         }
     }
@@ -140,9 +132,8 @@ impl Physics {
     pub fn set_anchor_force(&mut self, force: Option<crate::AnchorSpring>) {
         match self {
             Physics::Inline(p) => p.sim.set_anchor_force(force),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetAnchorForce(force));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetAnchorForce(force));
             },
         }
     }
@@ -153,9 +144,8 @@ impl Physics {
     pub fn set_forces(&mut self, forces: Vec<Box<dyn Force>>) {
         match self {
             Physics::Inline(p) => p.sim.set_forces(forces),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetForces(forces));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetForces(forces));
             },
         }
     }
@@ -168,9 +158,8 @@ impl Physics {
             Physics::Inline(p) => p
                 .sim
                 .set_forces(crate::catalog::build_force_set(&descriptor)),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetForceSet(descriptor));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetForceSet(descriptor));
             },
         }
     }
@@ -181,8 +170,7 @@ impl Physics {
     pub fn kinetic_energy(&self) -> f32 {
         match self {
             Physics::Inline(p) => p.sim.kinetic_energy(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.energy,
+                        Physics::Actor(p) | Physics::Remote(p) => p.energy,
         }
     }
 
@@ -190,8 +178,7 @@ impl Physics {
     pub fn force_count(&self) -> usize {
         match self {
             Physics::Inline(p) => p.sim.force_count(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => 0,
+                        Physics::Actor(_) | Physics::Remote(_) => 0,
         }
     }
 
@@ -199,8 +186,7 @@ impl Physics {
     pub fn anchor_count(&self) -> usize {
         match self {
             Physics::Inline(p) => p.sim.anchor_count(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => 0,
+                        Physics::Actor(_) | Physics::Remote(_) => 0,
         }
     }
 
@@ -209,8 +195,7 @@ impl Physics {
     pub fn affinity_pair_count(&self) -> usize {
         match self {
             Physics::Inline(p) => p.sim.affinity_pair_count(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => 0,
+                        Physics::Actor(_) | Physics::Remote(_) => 0,
         }
     }
 
@@ -226,9 +211,8 @@ impl Physics {
             Physics::Inline(p) => p
                 .sim
                 .set_lagged_repulsion(solver, threshold, max_stale_steps),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetLaggedRepulsion {
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetLaggedRepulsion {
                     solver,
                     threshold,
                     max_stale_steps,
@@ -242,8 +226,7 @@ impl Physics {
     pub fn repulsion_stats(&self) -> Option<LaggedStats> {
         match self {
             Physics::Inline(p) => p.sim.repulsion_stats(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => None,
+                        Physics::Actor(_) | Physics::Remote(_) => None,
         }
     }
 }

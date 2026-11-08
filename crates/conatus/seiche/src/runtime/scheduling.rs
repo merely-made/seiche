@@ -55,7 +55,9 @@ impl Physics {
                 speed,
                 pace.ticks,
                 inline.pace.budget.map(|budget| budget.spec()),
+                speed::thread_clock,
             ),
+            clock: speed::thread_clock,
         };
         let coupling_trace = sim.coupling_trace().cloned();
         let field_clock = sim.field_clock();
@@ -67,8 +69,7 @@ impl Physics {
             coupling_trace,
             field_clock,
             coupling_membership,
-            handle,
-            updates,
+            link: Link::Thread { handle, updates },
             settling,
             energy: 0.0,
             speed: 0.0,
@@ -78,6 +79,40 @@ impl Physics {
             pace,
             entry,
         });
+    }
+
+    /// A backend whose simulation runs on the far side of `transport` (a Web
+    /// Worker): no simulation is built here. The host sends it the state a
+    /// fresh simulation needs as data commands, which queue in order until the
+    /// far side says `Ready`, and folds the updates it sends back. See
+    /// [`Transport`].
+    pub fn remote(transport: Box<dyn Transport>) -> Self {
+        Physics::Remote(ActorPhysics {
+            field_clock: crate::FieldClock::default(),
+            coupling_membership: None,
+            coupling_trace: None,
+            link: Link::Remote(remote::RemoteLink::new(transport)),
+            settling: false,
+            energy: 0.0,
+            speed: 0.0,
+            command_epoch: 0,
+            dial: Speed::REAL_TIME,
+            budget: None,
+            pace: PaceStats::default(),
+            entry: entry_relay::EntryRelay::default(),
+        })
+    }
+
+    /// Whether the far side of a remote backend has said `Ready` (always true
+    /// for the other backends). Commands before then queue and replay.
+    pub fn is_ready(&self) -> bool {
+        match self {
+            Physics::Remote(ActorPhysics {
+                link: Link::Remote(link),
+                ..
+            }) => link.is_ready(),
+            _ => true,
+        }
     }
 
     /// Whether the simulation ticks on the caller's thread. A host keeps a
@@ -97,10 +132,9 @@ impl Physics {
                     p.pace.previous = None;
                 }
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.dial = speed;
-                p.handle.command(PhysicsCommand::SetSpeed(speed));
+                p.link.command(PhysicsCommand::SetSpeed(speed));
             },
         }
     }
@@ -108,8 +142,7 @@ impl Physics {
     pub fn speed(&self) -> Speed {
         match self {
             Physics::Inline(p) => p.pace.speed,
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.dial,
+                        Physics::Actor(p) | Physics::Remote(p) => p.dial,
         }
     }
 
@@ -119,10 +152,9 @@ impl Physics {
     pub fn set_step_budget(&mut self, budget: Option<StepBudget>) {
         match self {
             Physics::Inline(p) => p.pace.budget = budget,
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.budget = budget;
-                p.handle
+                p.link
                     .command(PhysicsCommand::SetStepBudget(budget.map(|b| b.spec())));
             },
         }
@@ -132,8 +164,7 @@ impl Physics {
     pub fn step_budget(&self) -> Option<StepBudget> {
         match self {
             Physics::Inline(p) => p.pace.budget,
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.budget,
+                        Physics::Actor(p) | Physics::Remote(p) => p.budget,
         }
     }
 
@@ -141,8 +172,7 @@ impl Physics {
     pub fn pace(&self) -> PaceStats {
         match self {
             Physics::Inline(p) => p.pace.stats(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.pace,
+                        Physics::Actor(p) | Physics::Remote(p) => p.pace,
         }
     }
 
@@ -156,12 +186,11 @@ impl Physics {
                     p.sim.set_field_clock_paused(false);
                 }
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 if ticks > 0 {
                     p.field_clock.paused = false;
                 }
-                p.handle.command(PhysicsCommand::Settle(ticks));
+                p.link.command(PhysicsCommand::Settle(ticks));
                 if ticks > 0 {
                     p.settling = true;
                 }
@@ -181,10 +210,9 @@ impl Physics {
                 p.pace.forget();
                 p.pace.meter.clear();
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.field_clock.paused = true;
-                p.handle.command(PhysicsCommand::Halt);
+                p.link.command(PhysicsCommand::Halt);
                 p.barrier();
                 p.settling = false;
             },
@@ -196,9 +224,8 @@ impl Physics {
     pub fn set_dragging(&mut self, dragging: bool) {
         match self {
             Physics::Inline(p) => p.dragging = dragging,
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetDragging(dragging));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetDragging(dragging));
             },
         }
     }
@@ -207,8 +234,7 @@ impl Physics {
     pub fn is_settling(&self) -> bool {
         match self {
             Physics::Inline(p) => should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.settling,
+                        Physics::Actor(p) | Physics::Remote(p) => p.settling,
         }
     }
 
@@ -221,8 +247,7 @@ impl Physics {
                 let settling = should_tick(&p.sim, p.ticks_remaining, p.dragging, p.halted);
                 speed::fold(p, view, settling);
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.fold_latest(view),
+                        Physics::Actor(p) | Physics::Remote(p) => p.fold_latest(view),
         }
     }
 
@@ -237,8 +262,7 @@ impl Physics {
     pub fn advance_frame(&mut self, view: &mut LayoutView) -> bool {
         match self {
             Physics::Inline(p) => speed::advance_frame(p, view),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
+                        Physics::Actor(p) | Physics::Remote(p) => {
                 p.fold_latest(view);
                 p.settling
             },
@@ -250,8 +274,7 @@ impl Physics {
     pub fn rms_speed(&self) -> f32 {
         match self {
             Physics::Inline(p) => p.sim.rms_speed(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => p.speed,
+                        Physics::Actor(p) | Physics::Remote(p) => p.speed,
         }
     }
 
@@ -262,8 +285,7 @@ impl Physics {
     pub fn tick_demand(&self) -> (bool, u32) {
         match self {
             Physics::Inline(p) => (p.sim.wants_continuous_tick(), p.ticks_remaining),
-            #[cfg(feature = "actor")]
-            Physics::Actor(_) => (false, 0),
+                        Physics::Actor(_) | Physics::Remote(_) => (false, 0),
         }
     }
 }

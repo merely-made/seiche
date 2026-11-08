@@ -119,7 +119,7 @@ fn tick(physics: &mut Physics, view: &mut LayoutView, ticks_so_far: &mut u64) {
         Physics::Inline(_) => {
             physics.advance_frame(view);
         },
-        Physics::Actor(_) => {
+        Physics::Actor(_) | Physics::Remote(_) => {
             let want = *ticks_so_far as f64 * f64::from(TICK_DT) - 1e-9;
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while physics.field_clock().elapsed < want {

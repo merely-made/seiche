@@ -49,7 +49,6 @@ pub use seiche_model::pace::TICK_DT;
 mod data_command;
 mod elapsed;
 pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
-#[cfg(feature = "actor")]
 mod actor;
 mod speed;
 #[cfg(feature = "actor")]
@@ -60,8 +59,11 @@ pub use speed::{
     DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
 };
 
-#[cfg(feature = "actor")]
 mod entry_relay;
+mod remote;
+pub use remote::Transport;
+mod worker;
+pub use worker::PhysicsWorker;
 #[cfg(feature = "actor")]
 mod coupling_trace_delivery;
 #[cfg(feature = "actor")]
@@ -77,6 +79,8 @@ mod field_runtime_tests;
 mod entry_relay_tests;
 #[cfg(test)]
 mod pause_tests;
+#[cfg(test)]
+mod remote_tests;
 #[cfg(all(test, feature = "actor"))]
 mod retirement_tests;
 #[cfg(feature = "actor")]
@@ -226,15 +230,46 @@ pub struct InlinePhysics {
     pace: speed::Pace,
 }
 
-/// The off-thread backend: the actor handle, its update channel, and the last
-/// settling flag the host saw.
-#[cfg(feature = "actor")]
+/// How the host reaches the far side of an offloaded backend: the actor thread's
+/// handle and update channel, or a [`Transport`] to a Worker.
+pub(super) enum Link {
+    #[cfg(feature = "actor")]
+    Thread {
+        handle: ActorHandle<PhysicsCommand>,
+        updates: Receiver<PhysicsUpdate>,
+    },
+    Remote(remote::RemoteLink),
+}
+
+impl Link {
+    /// Send a command to the far side.
+    pub(super) fn command(&mut self, command: PhysicsCommand) {
+        match self {
+            #[cfg(feature = "actor")]
+            Link::Thread { handle, .. } => {
+                handle.command(command);
+            },
+            Link::Remote(link) => link.command(command),
+        }
+    }
+
+    /// Every update that has arrived, oldest first.
+    pub(super) fn drain(&mut self) -> Vec<PhysicsUpdate> {
+        match self {
+            #[cfg(feature = "actor")]
+            Link::Thread { updates, .. } => std::iter::from_fn(|| updates.try_recv().ok()).collect(),
+            Link::Remote(link) => link.drain(),
+        }
+    }
+}
+
+/// The offloaded backend ([`Physics::Actor`] on a thread, [`Physics::Remote`]
+/// over a transport): the link to the far side, and what the host last saw of it.
 pub struct ActorPhysics {
     field_clock: crate::FieldClock,
     coupling_membership: Option<crate::CouplingMembershipFrame>,
     coupling_trace: Option<crate::CouplingTrace>,
-    handle: ActorHandle<PhysicsCommand>,
-    updates: Receiver<PhysicsUpdate>,
+    link: Link,
     settling: bool,
     /// The kinetic energy the last folded snapshot carried.
     energy: f32,
@@ -251,14 +286,13 @@ pub struct ActorPhysics {
     entry: entry_relay::EntryRelay,
 }
 
-#[cfg(feature = "actor")]
 impl ActorPhysics {
     fn barrier(&mut self) {
         self.command_epoch = self
             .command_epoch
             .checked_add(1)
             .expect("physics epoch exhausted");
-        self.handle
+        self.link
             .command(PhysicsCommand::Barrier(self.command_epoch));
     }
 
@@ -266,7 +300,7 @@ impl ActorPhysics {
     fn latest(&mut self) -> (Option<PhysicsUpdate>, Vec<seiche_model::CouplingEntryEvent>) {
         let mut latest = None;
         let mut entries = Vec::new();
-        while let Ok(mut update) = self.updates.try_recv() {
+        for mut update in self.link.drain() {
             entries.append(&mut update.coupling_entries);
             self.entry.acknowledged(update.command_epoch);
             if update.command_epoch >= self.command_epoch {
@@ -285,8 +319,12 @@ fn should_tick(sim: &Simulation, ticks: u32, dragging: bool, halted: bool) -> bo
 /// wasm); `offload` swaps in the actor thread (feature `actor`).
 pub enum Physics {
     Inline(InlinePhysics),
-    #[cfg(feature = "actor")]
+    /// The simulation on an actor thread (only built with the `actor` feature).
     Actor(ActorPhysics),
+    /// The simulation on the far side of a [`Transport`]: a Web Worker. Built
+    /// from scratch by [`Physics::remote`]; the host sends it data commands and
+    /// folds the updates that come back.
+    Remote(ActorPhysics),
 }
 
 impl Physics {
@@ -295,9 +333,8 @@ impl Physics {
     pub fn set_linear_damping(&mut self, damping: f32) {
         match self {
             Physics::Inline(p) => p.sim.set_linear_damping(damping),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetLinearDamping(damping));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetLinearDamping(damping));
             },
         }
     }
@@ -308,9 +345,8 @@ impl Physics {
     pub fn set_node_colliders(&mut self, colliders: Vec<(NodeKey, NodeCollider)>) {
         match self {
             Physics::Inline(p) => p.sim.set_node_colliders(colliders),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link
                     .command(PhysicsCommand::SetNodeColliders(colliders));
             },
         }
@@ -321,9 +357,8 @@ impl Physics {
     pub fn set_node_materials(&mut self, materials: Vec<(NodeKey, NodeMaterial)>) {
         match self {
             Physics::Inline(p) => p.sim.set_node_materials(materials),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link
                     .command(PhysicsCommand::SetNodeMaterials(materials));
             },
         }
@@ -342,9 +377,8 @@ impl Physics {
             Physics::Inline(p) => {
                 p.sim.add_scene_body(collider, position, velocity);
             },
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link
                     .command(PhysicsCommand::AddSceneBody(collider, position, velocity));
             },
         }
@@ -354,9 +388,8 @@ impl Physics {
     pub fn set_nodes_tangible(&mut self, tangible: bool) {
         match self {
             Physics::Inline(p) => p.sim.set_nodes_tangible(tangible),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetNodesTangible(tangible));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetNodesTangible(tangible));
             },
         }
     }
@@ -365,9 +398,8 @@ impl Physics {
     pub fn load_scene(&mut self, spec: SceneSpec) {
         match self {
             Physics::Inline(p) => p.sim.load_scene(&spec),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::LoadScene(spec));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::LoadScene(spec));
             },
         }
     }
@@ -376,9 +408,8 @@ impl Physics {
     pub fn set_static_obstacles(&mut self, obstacles: Vec<crate::StaticObstacle>) {
         match self {
             Physics::Inline(p) => p.sim.set_static_obstacles(obstacles),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link
                     .command(PhysicsCommand::SetStaticObstacles(obstacles));
             },
         }
@@ -388,9 +419,8 @@ impl Physics {
     pub fn clear_scene(&mut self) {
         match self {
             Physics::Inline(p) => p.sim.clear_scene(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::ClearScene);
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::ClearScene);
             },
         }
     }
@@ -407,9 +437,8 @@ impl Physics {
     ) {
         match self {
             Physics::Inline(p) => p.sim.load_fluid(params, basin, origin, cols, rows, spacing),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::LoadFluid {
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::LoadFluid {
                     params,
                     basin,
                     origin,
@@ -425,9 +454,8 @@ impl Physics {
     pub fn clear_fluid(&mut self) {
         match self {
             Physics::Inline(p) => p.sim.clear_fluid(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::ClearFluid);
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::ClearFluid);
             },
         }
     }
@@ -436,9 +464,8 @@ impl Physics {
     pub fn set_scene_field(&mut self, field: Option<SceneField>) {
         match self {
             Physics::Inline(p) => p.sim.set_scene_field(field),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetSceneField(field));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetSceneField(field));
             },
         }
     }
@@ -447,9 +474,8 @@ impl Physics {
     pub fn add_emitter(&mut self, spec: SceneEmitter) {
         match self {
             Physics::Inline(p) => p.sim.add_emitter(spec),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::AddEmitter(spec));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::AddEmitter(spec));
             },
         }
     }
@@ -458,9 +484,8 @@ impl Physics {
     pub fn clear_emitters(&mut self) {
         match self {
             Physics::Inline(p) => p.sim.clear_emitters(),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::ClearEmitters);
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::ClearEmitters);
             },
         }
     }
@@ -469,9 +494,8 @@ impl Physics {
     pub fn pin(&mut self, node: NodeKey, position: Point2D<f32>) {
         match self {
             Physics::Inline(p) => p.sim.pin(node, position),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::Pin(node, position));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::Pin(node, position));
             },
         }
     }
@@ -480,9 +504,8 @@ impl Physics {
     pub fn unpin(&mut self, node: NodeKey) {
         match self {
             Physics::Inline(p) => p.sim.unpin(node),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::Unpin(node));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::Unpin(node));
             },
         }
     }
@@ -492,15 +515,13 @@ impl Physics {
     pub fn set_axis_locks(&mut self, locks: Vec<(NodeKey, crate::Axes)>) {
         match self {
             Physics::Inline(p) => p.sim.set_axis_locks(locks),
-            #[cfg(feature = "actor")]
-            Physics::Actor(p) => {
-                p.handle.command(PhysicsCommand::SetAxisLocks(locks));
+                        Physics::Actor(p) | Physics::Remote(p) => {
+                p.link.command(PhysicsCommand::SetAxisLocks(locks));
             },
         }
     }
 }
 
-#[cfg(feature = "actor")]
 impl ActorPhysics {
     fn fold_latest(&mut self, view: &mut LayoutView) {
         let (latest, entries) = self.latest();
@@ -511,10 +532,14 @@ impl ActorPhysics {
             self.speed = update.snapshot.speed;
             self.pace = update.pace;
             self.field_clock = update.field_clock;
-            self.coupling_membership = update
-                .coupling_membership
-                .and_then(|delivery| delivery.read());
-            self.coupling_trace = update.coupling_trace.and_then(|delivery| delivery.read());
+            // A remote backend has no diagnostic frames: they stay on the far side.
+            #[cfg(feature = "actor")]
+            {
+                self.coupling_membership = update
+                    .coupling_membership
+                    .and_then(|delivery| delivery.read());
+                self.coupling_trace = update.coupling_trace.and_then(|delivery| delivery.read());
+            }
         }
         if !entries.is_empty() {
             self.entry.dispatch(entries, self.coupling_membership.as_mut());

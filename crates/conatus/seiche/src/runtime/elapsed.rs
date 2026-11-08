@@ -27,8 +27,7 @@ impl Physics {
                     p.pace.forget();
                 }
             },
-            #[cfg(feature = "actor")]
-            Self::Actor(_) => {},
+            Self::Actor(_) | Self::Remote(_) => {},
         }
     }
 
@@ -92,8 +91,7 @@ impl Physics {
                 speed::fold(p, view, settling);
                 report
             },
-            #[cfg(feature = "actor")]
-            Self::Actor(_) => ElapsedStepReport {
+            Self::Actor(_) | Self::Remote(_) => ElapsedStepReport {
                 settling: self.advance_frame(view),
                 ..ElapsedStepReport::default()
             },

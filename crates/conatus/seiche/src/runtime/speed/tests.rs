@@ -232,8 +232,7 @@ fn slow_motion_draws_every_frame_and_steps_every_fifth() {
     }
     let simulated = match &physics {
         Physics::Inline(inline) => bits(&inline.sim.view()),
-        #[cfg(feature = "actor")]
-        Physics::Actor(_) => unreachable!(),
+        Physics::Actor(_) | Physics::Remote(_) => unreachable!(),
     };
     assert_eq!(simulated, bits(&reference.view()));
     let mut tenth = self::sim(Set::LinLog);

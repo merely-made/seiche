@@ -11,8 +11,7 @@ impl Physics {
     pub fn field_clock(&self) -> crate::FieldClock {
         match self {
             Self::Inline(p) => p.sim.field_clock(),
-            #[cfg(feature = "actor")]
-            Self::Actor(p) => p.field_clock,
+                        Self::Actor(p) | Self::Remote(p) => p.field_clock,
         }
     }
     /// Explicit Reset; preserves paused/running state and solver-age counters.
@@ -22,8 +21,7 @@ impl Physics {
                 p.sim.reset_field_runtime(positions);
                 p.pace.forget();
             },
-            #[cfg(feature = "actor")]
-            Self::Actor(p) => {
+                        Self::Actor(p) | Self::Remote(p) => {
                 p.field_clock.elapsed = 0.0;
                 p.field_clock.epoch = p
                     .field_clock
@@ -32,7 +30,7 @@ impl Physics {
                     .expect("field clock epoch exhausted");
                 p.coupling_trace = None;
                 p.coupling_membership = None;
-                p.handle
+                p.link
                     .command(PhysicsCommand::ResetFieldRuntime(positions));
                 p.barrier();
             },
@@ -48,12 +46,11 @@ impl Physics {
     pub fn set_coupling_entry_handler(&mut self, handler: Option<crate::CouplingEntryHandler>) {
         match self {
             Self::Inline(p) => p.sim.set_coupling_entry_handler(handler),
-            #[cfg(feature = "actor")]
-            Self::Actor(p) => {
+                        Self::Actor(p) | Self::Remote(p) => {
                 p.coupling_membership = None;
                 let relay = handler.is_some();
                 p.entry.set_handler(handler);
-                p.handle
+                p.link
                     .command(PhysicsCommand::SetCouplingEntryRelay(relay));
                 p.barrier();
             },
@@ -64,8 +61,7 @@ impl Physics {
     pub fn coupling_membership(&self) -> Option<&crate::CouplingMembershipFrame> {
         match self {
             Self::Inline(p) => p.sim.coupling_membership(),
-            #[cfg(feature = "actor")]
-            Self::Actor(p) => p.coupling_membership.as_ref(),
+                        Self::Actor(p) | Self::Remote(p) => p.coupling_membership.as_ref(),
         }
     }
 }

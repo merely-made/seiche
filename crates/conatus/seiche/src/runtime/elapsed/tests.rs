@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::runtime::Link;
 use crate::{NodeExclusion, NodeKey, Simulation};
 use euclid::default::Point2D;
 
@@ -221,8 +222,7 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
         field_clock: Default::default(),
         coupling_membership: None,
         coupling_trace: None,
-        handle,
-        updates,
+        link: Link::Thread { handle, updates },
         settling: true,
         energy: 0.0,
         speed: 0.0,
@@ -255,8 +255,8 @@ fn actor_elapsed_calls_only_drain_and_send_no_commands() {
         physics.reset_elapsed();
     }
     // FIFO marker acknowledges that every earlier command would be observed.
-    if let Physics::Actor(p) = &physics {
-        p.handle.command(PhysicsCommand::Barrier(123));
+    if let Physics::Actor(p) = &mut physics {
+        p.link.command(PhysicsCommand::Barrier(123));
     }
     assert!(matches!(
         observed.recv_timeout(Duration::from_secs(2)).unwrap(),

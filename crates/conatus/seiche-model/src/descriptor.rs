@@ -81,6 +81,12 @@ pub struct LawInputsData {
     /// Each node's Louvain community index (`None` without a partition).
     pub clusters: Option<Vec<(NodeKey, u32)>>,
     pub meaning: Option<MeaningTable>,
+    /// The host's token for the node and edge lists above: equal tokens mean
+    /// the same lists. A backend that keeps the physics channels (PageRank,
+    /// colouring, the depths) between builds keys them by it, and still checks
+    /// the lists, so a token reused for other lists costs a recomputation and
+    /// nothing else. `None` computes each time.
+    pub revision: Option<u64>,
 }
 
 /// The law slot and the overlays as data: what `PhysicsCommand::SetForceSet`

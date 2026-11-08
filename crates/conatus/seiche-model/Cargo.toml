@@ -21,8 +21,17 @@ numen = { path = "../numen", version = "0.2" }
 # Role's wire form (seiche's `serde` feature forwards here).
 serde = { version = "1", features = ["derive"], optional = true }
 
+# The wire codec (`wire`): postcard, a compact varint format with no schema and
+# no_std support, for the Worker's message boundary.
+postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+
 [features]
 serde = ["dep:serde", "euclid/serde", "petgraph/serde-1"]
+# `wire`: the messages between a host and a physics Worker, and their postcard codec.
+wire = ["serde", "dep:postcard"]
 
 [lints]
 workspace = true

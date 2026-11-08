@@ -126,3 +126,27 @@ pub fn build_force_set(descriptor: &ForceSetDescriptor) -> Vec<Box<dyn Force>> {
         descriptor.sources,
     )
 }
+
+/// [`build_force_set`], reading the physics channels from `cache` when the
+/// descriptor names its inputs with a revision: a second build at the same
+/// revision (a law or overlay change over an unchanged graph) takes PageRank,
+/// the colouring and the depths from the first. The forces are the same ones
+/// either way.
+pub fn build_force_set_cached(
+    descriptor: &ForceSetDescriptor,
+    cache: &std::rc::Rc<std::cell::RefCell<super::ChannelCache>>,
+) -> Vec<Box<dyn Force>> {
+    let mut inputs = LawInputs::from_data(&descriptor.inputs);
+    if descriptor.inputs.revision.is_some() {
+        inputs = inputs.with_channels(Box::new(super::cache::Cached::new(
+            descriptor.inputs.revision,
+            std::rc::Rc::clone(cache),
+        )));
+    }
+    inputs.composed(
+        descriptor.law,
+        descriptor.composition.as_ref(),
+        &descriptor.overlays,
+        descriptor.sources,
+    )
+}

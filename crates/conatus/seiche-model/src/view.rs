@@ -43,6 +43,7 @@ pub struct RectSelection {
 /// and collider shape — so the paint can match the true face (a rotated square, a hull polygon)
 /// rather than a uniform orb. (Physics scenes P4b — shape-aware paint.)
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SceneBodyView {
     pub id: SceneBodyId,
     pub position: Point2D<f32>,
@@ -61,6 +62,7 @@ pub struct SceneBodyView {
 /// only — edges live with the host's graph, not the simulation, so they need
 /// not cross the boundary every frame.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LayoutSnapshot {
     /// `(node, position)` for every body in the simulation.
     pub positions: Vec<(NodeKey, Point2D<f32>)>,

@@ -23,11 +23,13 @@
 
 pub mod algo;
 mod build;
+mod cache;
 mod composition;
 mod inputs;
 
 pub use build::density_law;
-pub use composition::build_force_set;
+pub use cache::{ChannelCache, ChannelRuns};
+pub use composition::{build_force_set, build_force_set_cached};
 pub use inputs::{Channels, LawInputs, MeaningGroups};
 pub use seiche_model::{LAW_SEED, LawSources};
 
