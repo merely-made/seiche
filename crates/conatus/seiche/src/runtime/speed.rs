@@ -20,11 +20,11 @@ use std::time::Duration;
 
 use euclid::default::Point2D;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use seiche_model::pace::monotonic_clock;
 pub use seiche_model::pace::{
     DEFAULT_BUDGET_SHARE, FALLBACK_DISPLAY_PERIOD, PaceStats, Speed, StepBudget, display_period,
 };
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-pub use seiche_model::pace::monotonic_clock;
 
 use super::{InlinePhysics, LayoutView, TICK_DT, TICK_DURATION, should_tick};
 use crate::{LayoutSnapshot, NodeKey, Simulation};

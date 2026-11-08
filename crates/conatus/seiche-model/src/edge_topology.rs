@@ -18,6 +18,7 @@ use crate::NodeKey;
 
 /// Consecutive occurrences of one ordered displayed endpoint pair.
 /// This is a storage run, not a canonical relationship or a force attribution.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EdgeRun {
     endpoints: (NodeKey, NodeKey),
@@ -43,6 +44,7 @@ impl EdgeRun {
 /// Counts mean repeated source rows, each with the existing unit contribution.
 /// They are not arbitrary weights. No pair sorting or global deduplication is
 /// performed. Hosts retain ownership of relation identity and visibility.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EdgeTopology {
     runs: Vec<EdgeRun>,

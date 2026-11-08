@@ -211,7 +211,7 @@ pub use seiche_model::{
 /// ([`NodeMaterial`]), and the [`Simulation`] methods that re-apply each to live bodies. (Node-rep.)
 mod node_body;
 mod obstacles;
-pub use obstacles::StaticObstacle;
+pub use seiche_model::StaticObstacle;
 pub use seiche_model::{NodeCollider, NodeMaterial};
 
 /// The **sieve**: collision predicates as data — nodes carry [`Kinds`], a sieve scene body

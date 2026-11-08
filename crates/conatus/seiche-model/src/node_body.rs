@@ -16,6 +16,7 @@ use crate::NODE_BODY_DENSITY;
 /// its own form vocabulary (orrery `NodeShape`, a custom sprite hull) onto this; seiche lowers
 /// each to a parry shape in [`Simulation::set_node_colliders`]. Sizes/points are in world
 /// units (the same space as positions). (Node-rep — collider matches shape.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeCollider {
     /// A circle of `radius` — the default, and the circle content silhouette.
@@ -39,6 +40,7 @@ pub enum NodeCollider {
 /// the orrery pushes per-node overrides via [`Simulation::set_node_materials`] (the same
 /// re-apply-to-live-bodies shape as [`Simulation::set_linear_damping`]). Independent of the
 /// node's shape (the collider geometry) and its face (the texture). (Node body & face — material.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeMaterial {
     /// Bounciness on contact: 0 (dead) to 1 (perfectly elastic).

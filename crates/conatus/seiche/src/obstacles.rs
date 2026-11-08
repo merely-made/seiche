@@ -6,21 +6,13 @@
 
 //! Static placement obstacles, independent of living scene decorations.
 
-use crate::{NODE_GROUP, NodeCollider, Simulation};
+use crate::{NODE_GROUP, Simulation, StaticObstacle};
 use rapier2d::prelude::*;
-
-/// A fixed obstacle in world units. Hosts validate their geometry before binding.
-#[derive(Clone, Debug)]
-pub struct StaticObstacle {
-    pub collider: NodeCollider,
-    pub position: (f32, f32),
-    pub rotation: f32,
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Kinds, NodeKey};
+    use crate::{Kinds, NodeCollider, NodeKey};
     use euclid::default::Point2D;
 
     #[test]

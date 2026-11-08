@@ -51,6 +51,26 @@ pub struct AnchorSpring {
 }
 
 impl AnchorSpring {
+    /// This spring as data: anchors in node-key order, then the tuning.
+    pub fn to_spec(&self) -> seiche_model::AnchorSpec {
+        let mut anchors: Vec<(NodeKey, (f32, f32))> =
+            self.anchors.iter().map(|(k, v)| (*k, (v.x, v.y))).collect();
+        anchors.sort_by_key(|(k, _)| k.index());
+        seiche_model::AnchorSpec {
+            anchors,
+            stiffness: self.stiffness,
+            slack: self.slack,
+        }
+    }
+
+    /// The spring a spec describes.
+    pub fn from_spec(spec: &seiche_model::AnchorSpec) -> Self {
+        let mut spring = Self::new(spec.anchors.iter().copied());
+        spring.stiffness = spec.stiffness;
+        spring.slack = spec.slack;
+        spring
+    }
+
     /// Springs toward `anchors` at the default stiffness.
     pub fn new(anchors: impl IntoIterator<Item = (NodeKey, (f32, f32))>) -> Self {
         Self {

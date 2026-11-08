@@ -66,6 +66,23 @@ pub struct AffinitySpring {
 }
 
 impl AffinitySpring {
+    /// This spring as data.
+    pub fn to_spec(&self) -> seiche_model::AffinitySpec {
+        seiche_model::AffinitySpec {
+            pairs: self.pairs.clone(),
+            stiffness: self.stiffness,
+            rest_length: self.rest_length,
+        }
+    }
+
+    /// The spring a spec describes.
+    pub fn from_spec(spec: &seiche_model::AffinitySpec) -> Self {
+        let mut spring = Self::new(spec.pairs.iter().copied());
+        spring.stiffness = spec.stiffness;
+        spring.rest_length = spec.rest_length;
+        spring
+    }
+
     /// A force over `pairs` (each `(a, b, weight)` with `weight` in `0..=1`) at
     /// the default stiffness / rest length. Tune the public fields after building
     /// if the host wants a different feel.

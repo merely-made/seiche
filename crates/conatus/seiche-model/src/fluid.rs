@@ -26,6 +26,7 @@ use euclid::default::{Point2D, Vector2D};
 
 /// Tunable PBF parameters. Public per the configurability-over-defaults stance; the defaults give a
 /// stable pool at Mere's `1 unit ≈ 1 px` scale.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct FluidParams {
     /// Target density the incompressibility constraint holds the fluid at. Auto-set from the spawn
@@ -71,6 +72,7 @@ impl Default for FluidParams {
 /// An analytic basin the particles stay within: a floor (largest `y`, since `+y` is down) and two
 /// side walls, open at the top. The first, simplest boundary; coupling to arbitrary rapier
 /// colliders (the bowl, a tangible node) is the next phase. (Physics scenes P4c-a.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct Basin {
     pub min_x: f32,

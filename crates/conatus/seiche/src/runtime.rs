@@ -46,6 +46,7 @@ use crate::{
 
 pub use seiche_model::pace::TICK_DT;
 
+mod data_command;
 mod elapsed;
 pub use elapsed::{ElapsedStepConfig, ElapsedStepReport, TICK_DURATION};
 #[cfg(feature = "actor")]

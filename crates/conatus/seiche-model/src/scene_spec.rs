@@ -19,11 +19,13 @@ use crate::NodeCollider;
 /// A stable, opaque handle to a scene-decoration body — a non-graph rapier body sharing the
 /// orrery's world, distinct from a [`NodeKey`](crate::NodeKey). Minted by
 /// [`Simulation::add_scene_body`](crate::Simulation::add_scene_body). (Physics scenes P1.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SceneBodyId(#[doc(hidden)] pub u64);
 
 /// Whether a scene body moves under forces / collision (`Dynamic`) or is immovable terrain
 /// (`Fixed`) — a floor, a wall, a peg, a joint anchor. (Physics scenes P3.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SceneBodyType {
     Dynamic,
@@ -34,6 +36,7 @@ pub enum SceneBodyType {
 /// per-body gravity scale, and initial rotation. Data, not code — a [`SceneSpec`] is a list of
 /// these. Build with [`SceneBodySpec::dynamic`] / [`SceneBodySpec::fixed`] plus the chaining
 /// setters. (Physics scenes P3 / P4b.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug)]
 pub struct SceneBodySpec {
     pub collider: NodeCollider,
@@ -115,6 +118,7 @@ impl SceneBodySpec {
 /// two scene bodies, mirroring rapier's set. Anchors are body-local attach points in world units
 /// (the body's own frame); use a [`SceneBodyType::Fixed`] body as a world anchor. (Physics scenes
 /// P4b.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub enum SceneJoint {
     /// Rigidly weld the two bodies' anchor points together (no relative motion).
@@ -147,6 +151,7 @@ pub enum SceneJoint {
 
 /// A motor on a [`SceneJoint::Revolute`]: drive toward `target_vel` (rad/s) with the given motor
 /// `factor` (a stiffness/strength). (Physics scenes P4b.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct JointMotorSpec {
     pub target_vel: f32,
@@ -155,6 +160,7 @@ pub struct JointMotorSpec {
 
 /// A constraint binding two scene bodies, referenced by their index in [`SceneSpec::bodies`]
 /// (spawn order). (Physics scenes P4b.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug)]
 pub struct SceneJointSpec {
     pub body_a: usize,
@@ -166,6 +172,7 @@ pub struct SceneJointSpec {
 /// beyond ballistic gravity" tier (a whirlpool, a gravity well). Set on the
 /// [`Simulation`](crate::Simulation) via `set_scene_field`; it keeps the physics actor ticking
 /// while active. (Physics scenes P4 — force-field tier.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SceneField {
     /// A whirlpool centred at `center`: each dynamic scene body feels a tangential force of
@@ -182,6 +189,7 @@ pub enum SceneField {
 /// stream), reaping each after `lifetime_secs` so the live count stays bounded. The "scene is alive
 /// over time" capability beyond one-shot placement; keeps the actor ticking while present. Added via
 /// `add_emitter`. (Physics scenes — emitters.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug)]
 pub struct SceneEmitter {
     pub collider: NodeCollider,
@@ -204,6 +212,7 @@ pub struct SceneEmitter {
 /// backdrop, and the joints binding its bodies. Loading one
 /// ([`Simulation::load_scene`](crate::Simulation::load_scene)) clears any prior scene. (Physics
 /// scenes P3 / P4b.)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Debug)]
 pub struct SceneSpec {
     pub bodies: Vec<SceneBodySpec>,
@@ -219,4 +228,13 @@ pub struct SceneSpec {
     /// Constraints binding pairs of bodies (by index into `bodies`): hinges, ropes, springs, welds.
     /// Empty for a jointless scene (a pile, a drift). (Physics scenes P4b.)
     pub joints: Vec<SceneJointSpec>,
+}
+
+/// A fixed obstacle in world units. Hosts validate their geometry before binding.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StaticObstacle {
+    pub collider: NodeCollider,
+    pub position: (f32, f32),
+    pub rotation: f32,
 }

@@ -20,7 +20,7 @@ euclid = "0.22"
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
-serde = ["dep:serde"]
+serde = ["dep:serde", "euclid/serde", "petgraph/serde-1"]
 
 [lints]
 workspace = true

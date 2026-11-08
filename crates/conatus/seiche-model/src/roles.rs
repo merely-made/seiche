@@ -73,6 +73,7 @@ impl Role {
 
 /// Which translation axes are held. An encoded axis is pinned on that axis
 /// and physics moves only the others (F28).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Axes {
     pub x: bool,

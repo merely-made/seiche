@@ -17,6 +17,7 @@ pub const TICK_DT: f32 = 1.0 / 60.0;
 
 /// Simulated seconds per wall second, in thousandths, clamped to
 /// [`Speed::MIN`]..=[`Speed::MAX`], or [`Speed::UNCAPPED`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Speed(u32);
 
