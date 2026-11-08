@@ -108,6 +108,9 @@ pub use forces::{Boundary, EdgeSpring, NodeExclusion};
 /// Still (no forces) need nothing here; the rest are their own files.
 pub mod laws;
 pub mod overlays;
+/// The catalog's engine half: the graph algorithms its sources read, and (as the
+/// descriptor step lands) the builders from a law, overlays and inputs to forces.
+pub mod catalog;
 pub use laws::{
     Anneal, Boids, CounterDamping, Density, DensityGrid, DensityMedium, DensityStop, Gravity, Hold,
     Kuramoto, LinLogForce, MagneticSpring, ParticleLife, StressSpring, graph_distances,
