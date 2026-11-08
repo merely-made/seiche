@@ -64,36 +64,7 @@ pub fn currency_of(forces: &[Box<dyn Force>]) -> Currency {
     law_currency(&terms)
 }
 
-/// What a law does with one more term.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Admission {
-    /// Taken as it is.
-    Compose,
-    /// Taken converted to the law's currency.
-    Convert,
-    /// Refused, with the reason a picker shows.
-    Refuse(&'static str),
-}
-
-impl Admission {
-    /// The more restrictive of two admissions: a refusal, then a conversion.
-    pub fn and(self, other: Admission) -> Admission {
-        match (self, other) {
-            (Admission::Refuse(reason), _) | (_, Admission::Refuse(reason)) => {
-                Admission::Refuse(reason)
-            },
-            (Admission::Convert, _) | (_, Admission::Convert) => Admission::Convert,
-            _ => Admission::Compose,
-        }
-    }
-
-    pub fn refusal(self) -> Option<&'static str> {
-        match self {
-            Admission::Refuse(reason) => Some(reason),
-            _ => None,
-        }
-    }
-}
+pub use seiche_model::catalog::Admission;
 
 /// What a law of `law` currency does with `term`; `resident` is whether the
 /// term has a resident kernel or the lagged upload.

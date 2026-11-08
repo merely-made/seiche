@@ -33,6 +33,7 @@ pub const NODE_BODY_RADIUS: f32 = 18.0;
 /// Density of a node body, so its mass is area times this.
 pub const NODE_BODY_DENSITY: f32 = 0.001;
 
+pub mod catalog;
 pub mod command;
 pub mod edge_topology;
 pub mod field_clock;
@@ -45,6 +46,10 @@ pub mod scene_spec;
 pub mod terms;
 pub mod view;
 
+pub use catalog::{
+    Admission, DENSITY_ADMITS, DENSITY_REFUSAL, OverlayRefusal, PhysicsDepthSource,
+    PhysicsKindSource, PhysicsLaw, PhysicsMassSource, PhysicsOverlay,
+};
 pub use command::{AffinitySpec, AnchorSpec, DataCommand};
 pub use edge_topology::{EdgeIter, EdgeRun, EdgeTopology};
 pub use field_clock::FieldClock;

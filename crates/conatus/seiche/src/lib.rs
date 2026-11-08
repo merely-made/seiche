@@ -257,6 +257,10 @@ mod query;
 pub use seiche_model::view;
 pub use seiche_model::{LayoutSnapshot, LayoutView, RectSelection, SceneBodyView};
 
+pub use seiche_model::{
+    DENSITY_ADMITS, DENSITY_REFUSAL, OverlayRefusal, PhysicsDepthSource, PhysicsKindSource,
+    PhysicsLaw, PhysicsMassSource, PhysicsOverlay,
+};
 pub use seiche_model::{NODE_BODY_DENSITY, NODE_BODY_RADIUS};
 
 /// Linear damping applied to every node body. Tuned for a slippery,
