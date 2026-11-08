@@ -127,6 +127,10 @@ pub enum PhysicsCommand {
     /// slots alone. Position-preserving: no body moves until the next tick.
     /// (Physics catalog — P1.)
     SetForces(Vec<Box<dyn Force>>),
+    /// [`Self::SetForces`] from data: the law slot and overlays as a
+    /// [`ForceSetDescriptor`](seiche_model::ForceSetDescriptor), built into forces on
+    /// the thread the backend runs (`catalog::build_force_set`).
+    SetForceSet(seiche_model::ForceSetDescriptor),
     /// Install (or clear) a lagged evaluator for `NodeExclusion` (see
     /// [`Simulation::set_lagged_repulsion`]): how a host's device reaches a
     /// simulation that is already offloaded. (Physics catalog P5b.)

@@ -21,21 +21,16 @@
 //! overlay reads a node attribute from. Plan:
 //! `design_docs/archive_docs/2026-10-28/2026-09-02_physics_catalog_plan.md`.
 
-use seiche_model::{PhysicsDepthSource, PhysicsKindSource, PhysicsMassSource};
-
-use crate::NodeKey;
-
 pub mod algo;
 mod build;
 mod composition;
 mod inputs;
 
 pub use build::density_law;
+pub use composition::build_force_set;
 pub use inputs::{Channels, LawInputs, MeaningGroups};
+pub use seiche_model::{LAW_SEED, LawSources};
 
-/// The seed every seeded law (Kinds' rule matrix, Anneal's walk) starts from,
-/// so a scene reopens to the same rules.
-pub const LAW_SEED: u64 = 0x5EED_CA7A_1064;
 /// The Skeleton overlay's tree-edge stiffness, against `EdgeSpring`'s 10.
 pub const SKELETON_STIFFNESS: f32 = 60.0;
 /// Charge's repulsion, calibrated so that at contact (a node diameter, 36)
@@ -62,32 +57,5 @@ pub const DENSITY_MAX_PASSES: u32 = 120;
 /// "Min 60, bar: all >= 0.7").
 pub const DENSITY_MIN_PASSES: u32 = 60;
 
-/// The sources a build reads attributes through.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LawSources {
-    pub kind: PhysicsKindSource,
-    /// Group pull's groups: any kind channel, unfolded.
-    pub groups: PhysicsKindSource,
-    pub mass: PhysicsMassSource,
-    pub depth: PhysicsDepthSource,
-    /// The focused node, for the Focus depth source.
-    pub focus: Option<NodeKey>,
-    /// The seed Kinds' matrix and Anneal's walk draw from: the spec's
-    /// (F156), [`LAW_SEED`] by default, so no default run moves.
-    pub seed: u64,
-}
-
-impl LawSources {
-    /// The default sources and no focus: enough to build any law over no
-    /// graph, to read its declared terms.
-    pub fn bare() -> Self {
-        Self {
-            kind: PhysicsKindSource::Site,
-            groups: PhysicsKindSource::Site,
-            mass: PhysicsMassSource::Degree,
-            depth: PhysicsDepthSource::Roots,
-            focus: None,
-            seed: LAW_SEED,
-        }
-    }
-}
+#[cfg(test)]
+mod descriptor_tests;

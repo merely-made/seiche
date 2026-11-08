@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use seiche_model::{PhysicsDepthSource, PhysicsKindSource, PhysicsMassSource};
+use seiche_model::{
+    ForceSetDescriptor, LawInputsData, LawSources, MeaningTable, PhysicsComposition,
+    PhysicsDepthSource, PhysicsKindSource, PhysicsLaw, PhysicsMassSource, PhysicsOverlay,
+};
 
 use super::algo;
 use crate::NodeKey;
@@ -104,6 +107,58 @@ impl<'a> LawInputs<'a> {
             clusters: None,
             meaning: None,
             channels: None,
+        }
+    }
+
+    /// The inputs a descriptor's table names, owning what they hold.
+    pub fn from_data(data: &LawInputsData) -> LawInputs<'static> {
+        LawInputs::from_parts(
+            data.nodes.clone(),
+            data.edges.clone(),
+            data.sites.iter().cloned().collect(),
+        )
+        .with_clusters(data.clusters.clone().map(Cow::Owned))
+        .with_meaning(data.meaning.clone().map(|table| MeaningGroups {
+            groups: Cow::Owned(table.groups),
+            unknown: table.unknown,
+        }))
+    }
+
+    /// These inputs as a table a descriptor carries (the sites in key order).
+    /// The cache of channels, if any, is not in it: the channels are functions
+    /// of the nodes and edges, and the build computes them itself.
+    pub fn to_data(&self) -> LawInputsData {
+        let mut sites: Vec<(NodeKey, String)> =
+            self.sites.iter().map(|(k, v)| (*k, v.clone())).collect();
+        sites.sort_by_key(|(key, _)| key.index());
+        LawInputsData {
+            nodes: self.nodes.clone(),
+            edges: self.edges.clone(),
+            sites,
+            clusters: self.clusters.as_ref().map(|c| c.to_vec()),
+            meaning: self.meaning.as_ref().map(|m| MeaningTable {
+                groups: m.groups.to_vec(),
+                unknown: m.unknown,
+            }),
+        }
+    }
+
+    /// The force set this build would make, as a descriptor
+    /// ([`build_force_set`](super::build_force_set) builds the same forces
+    /// from it).
+    pub fn describe(
+        &self,
+        law: PhysicsLaw,
+        composition: Option<&PhysicsComposition>,
+        overlays: &[PhysicsOverlay],
+        sources: LawSources,
+    ) -> ForceSetDescriptor {
+        ForceSetDescriptor {
+            law,
+            composition: composition.cloned(),
+            overlays: overlays.to_vec(),
+            sources,
+            inputs: self.to_data(),
         }
     }
 

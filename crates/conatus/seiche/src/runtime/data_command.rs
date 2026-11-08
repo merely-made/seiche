@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 //! `PhysicsCommand` <-> `DataCommand`: the commands whose payloads are plain
-//! data convert without loss; the rest (`SetForces`, `SetCouplingForces`,
-//! `SetCouplingEntryHandler`, `SetLaggedRepulsion`, `SetStepBudget`) are
-//! returned unchanged in `Err` for the descriptor step.
+//! data (`SetForceSet` among them) convert without loss; the rest (`SetForces`,
+//! `SetCouplingForces`, `SetCouplingEntryHandler`, `SetLaggedRepulsion`,
+//! `SetStepBudget`) are returned unchanged in `Err`.
 
 use seiche_model::DataCommand;
 
@@ -68,6 +68,7 @@ impl From<DataCommand> for PhysicsCommand {
             D::AddEmitter(e) => PhysicsCommand::AddEmitter(e),
             D::ClearEmitters => PhysicsCommand::ClearEmitters,
             D::SetSpeed(s) => PhysicsCommand::SetSpeed(s),
+            D::SetForceSet(d) => PhysicsCommand::SetForceSet(d),
         }
     }
 }
@@ -128,6 +129,7 @@ impl TryFrom<PhysicsCommand> for DataCommand {
             P::AddEmitter(e) => DataCommand::AddEmitter(e),
             P::ClearEmitters => DataCommand::ClearEmitters,
             P::SetSpeed(s) => DataCommand::SetSpeed(s),
+            P::SetForceSet(d) => DataCommand::SetForceSet(d),
             other @ (P::SetCouplingEntryHandler(_)
             | P::SetCouplingForces(_)
             | P::SetForces(_)

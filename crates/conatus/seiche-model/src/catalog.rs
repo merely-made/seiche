@@ -46,6 +46,7 @@ impl Admission {
 /// The physics law: which dynamics the graph moves under. Ids are technical
 /// (`family.method`), labels plain, as the arrangement catalog does it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsLaw {
     /// Exclusion + edge springs + a centering boundary: the force-directed default.
     Springs,
@@ -209,6 +210,7 @@ impl std::fmt::Display for OverlayRefusal {
 
 /// An overlay: one extra force composed onto any law.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsOverlay {
     /// Hubs push their surroundings apart, by weight.
     DegreeRepulsion,
@@ -298,6 +300,7 @@ impl PhysicsOverlay {
 /// Where the Kinds law reads a node's kind from, and Group pull its groups —
 /// the host's choice per scene, one selector each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsKindSource {
     /// The URL host: every site a kind.
     Site,
@@ -355,6 +358,7 @@ impl PhysicsKindSource {
 
 /// Where Orbit's masses and the hub overlays' weights come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsMassSource {
     /// Degree: the most-connected node is the heaviest.
     Degree,
@@ -388,6 +392,7 @@ impl PhysicsMassSource {
 
 /// Where the Depth overlay reads a node's depth from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsDepthSource {
     /// Breadth-first from the nodes nothing points at.
     Roots,

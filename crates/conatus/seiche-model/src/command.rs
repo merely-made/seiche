@@ -21,8 +21,8 @@ use std::num::NonZeroUsize;
 use euclid::default::Point2D;
 
 use crate::{
-    Axes, Basin, EdgeTopology, FluidParams, NodeCollider, NodeKey, NodeMaterial, SceneEmitter,
-    SceneField, SceneSpec, Speed, StaticObstacle,
+    Axes, Basin, EdgeTopology, FluidParams, ForceSetDescriptor, NodeCollider, NodeKey,
+    NodeMaterial, SceneEmitter, SceneField, SceneSpec, Speed, StaticObstacle,
 };
 
 /// An anchor spring as data: each node's anchor, the stiffness and the slack.
@@ -124,4 +124,7 @@ pub enum DataCommand {
     ClearEmitters,
     /// Set the simulation speed.
     SetSpeed(Speed),
+    /// Replace the law's force set wholesale, from its descriptor: the engine
+    /// builds the forces (`seiche::catalog::build_force_set`).
+    SetForceSet(ForceSetDescriptor),
 }

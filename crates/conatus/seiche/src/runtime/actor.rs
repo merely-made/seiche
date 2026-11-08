@@ -185,6 +185,9 @@ fn apply(sim: &mut Simulation, cmd: PhysicsCommand, state: &mut ActorState) {
         PhysicsCommand::SetAffinityForce(force) => sim.set_affinity_force(force),
         PhysicsCommand::SetAnchorForce(force) => sim.set_anchor_force(force),
         PhysicsCommand::SetForces(forces) => sim.set_forces(forces),
+        PhysicsCommand::SetForceSet(descriptor) => {
+            sim.set_forces(crate::catalog::build_force_set(&descriptor));
+        },
         PhysicsCommand::SetLaggedRepulsion {
             solver,
             threshold,

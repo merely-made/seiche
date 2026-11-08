@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use seiche_model::{GroupSource, PhysicsComposition, PhysicsGrouping, PhysicsLaw, PhysicsOverlay};
+use seiche_model::{
+    ForceSetDescriptor, GroupSource, PhysicsComposition, PhysicsGrouping, PhysicsLaw,
+    PhysicsOverlay,
+};
 
 use super::{LawInputs, LawSources};
 use crate::{Force, Grouped, Partition, Weighted};
@@ -109,4 +112,17 @@ impl LawInputs<'_> {
         );
         forces
     }
+}
+
+/// The forces a descriptor names: the law slot (the law, or the composition),
+/// then the overlays, built over its resolved inputs. The same builders as
+/// [`LawInputs::composed`], so the forces are those a host would build in
+/// process from the same inputs.
+pub fn build_force_set(descriptor: &ForceSetDescriptor) -> Vec<Box<dyn Force>> {
+    LawInputs::from_data(&descriptor.inputs).composed(
+        descriptor.law,
+        descriptor.composition.as_ref(),
+        &descriptor.overlays,
+        descriptor.sources,
+    )
 }

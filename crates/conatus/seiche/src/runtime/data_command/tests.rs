@@ -8,8 +8,9 @@ use std::num::NonZeroUsize;
 
 use euclid::default::Point2D;
 use seiche_model::{
-    AffinitySpec, AnchorSpec, Axes, Basin, DataCommand, EdgeTopology, FluidParams, NodeCollider,
-    NodeKey, NodeMaterial, SceneEmitter, SceneField, Speed, StaticObstacle,
+    AffinitySpec, AnchorSpec, Axes, Basin, DataCommand, EdgeTopology, FluidParams,
+    ForceSetDescriptor, LawInputsData, LawSources, NodeCollider, NodeKey, NodeMaterial, PhysicsLaw,
+    PhysicsOverlay, SceneEmitter, SceneField, Speed, StaticObstacle,
 };
 
 use super::*;
@@ -105,13 +106,26 @@ fn samples() -> Vec<DataCommand> {
         }),
         DataCommand::ClearEmitters,
         DataCommand::SetSpeed(Speed::from_factor(2.0)),
+        DataCommand::SetForceSet(ForceSetDescriptor {
+            law: PhysicsLaw::Charge,
+            composition: None,
+            overlays: vec![PhysicsOverlay::Skeleton],
+            sources: LawSources::bare(),
+            inputs: LawInputsData {
+                nodes: vec![NodeKey::new(0), NodeKey::new(1)],
+                edges: vec![(NodeKey::new(0), NodeKey::new(1))],
+                sites: vec![(NodeKey::new(0), "a".into()), (NodeKey::new(1), "b".into())],
+                clusters: None,
+                meaning: None,
+            },
+        }),
     ]
 }
 
 #[test]
 fn every_data_command_round_trips_through_physics_command() {
     let samples = samples();
-    assert_eq!(samples.len(), 30, "one sample per data command");
+    assert_eq!(samples.len(), 31, "one sample per data command");
     for command in samples {
         let before = format!("{command:?}");
         let physics: PhysicsCommand = command.into();

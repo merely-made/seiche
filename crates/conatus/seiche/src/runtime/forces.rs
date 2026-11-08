@@ -155,6 +155,21 @@ impl Physics {
         }
     }
 
+    /// [`Self::set_forces`] from a descriptor: the forces are built where the
+    /// backend runs (`catalog::build_force_set`), here inline and on the actor's
+    /// thread offloaded, so a host sends data and not boxed forces.
+    pub fn set_force_set(&mut self, descriptor: seiche_model::ForceSetDescriptor) {
+        match self {
+            Physics::Inline(p) => p
+                .sim
+                .set_forces(crate::catalog::build_force_set(&descriptor)),
+            #[cfg(feature = "actor")]
+            Physics::Actor(p) => {
+                p.handle.command(PhysicsCommand::SetForceSet(descriptor));
+            },
+        }
+    }
+
     /// The node bodies' kinetic energy: read live inline, and from the last
     /// folded snapshot offloaded, so both backends answer the same question.
     /// (Physics catalog — the receipts' energy floor.)

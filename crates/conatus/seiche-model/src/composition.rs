@@ -27,6 +27,7 @@ pub const UNWEIGHTED: &str = "a weight scales a law's forces, and this law write
 pub const CHARGE_BETWEEN_WEIGHT: f32 = 16.0;
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PhysicsComposition {
     /// Force laws at weights; 1 is the law as calibrated, 0 leaves it out.
     Mix(Vec<(PhysicsLaw, f32)>),
@@ -59,6 +60,7 @@ impl PhysicsComposition {
 
 /// Where a grouping's partition comes from.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GroupSource {
     /// A `groups.*` channel, read through the law inputs at each rebuild, so
     /// the partition follows the channel (F70).
@@ -71,6 +73,7 @@ pub enum GroupSource {
 /// Groups: Charge between them and Springs within is the first instance
 /// ([`Self::charge_between`]).
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PhysicsGrouping {
     /// Each node's group: a channel's, or the host's.
     pub groups: GroupSource,
