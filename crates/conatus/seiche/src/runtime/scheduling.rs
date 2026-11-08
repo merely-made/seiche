@@ -80,6 +80,13 @@ impl Physics {
         });
     }
 
+    /// Whether the simulation ticks on the caller's thread. A host keeps a
+    /// cache that only an in-thread build can share (the canvas's channel
+    /// registry) on the inline path, and sends data to any other backend.
+    pub fn runs_inline(&self) -> bool {
+        matches!(self, Physics::Inline(_))
+    }
+
     /// Set the simulation speed: ticks per frame at the fixed [`TICK_DT`].
     /// The trajectory does not depend on it.
     pub fn set_speed(&mut self, speed: Speed) {

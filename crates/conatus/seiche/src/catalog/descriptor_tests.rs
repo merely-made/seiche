@@ -327,3 +327,59 @@ fn the_run_comparison_can_tell_forces_apart() {
     assert_ne!(at(PhysicsLaw::Springs), at(PhysicsLaw::Charge));
     assert_ne!(at(PhysicsLaw::Springs), at(PhysicsLaw::Still));
 }
+
+/// The descriptor sent to an offloaded backend is built on the actor's thread
+/// and lands on the trajectory the inline backend builds, bit for bit.
+#[cfg(feature = "actor")]
+#[test]
+fn an_offloaded_backend_builds_a_descriptor_to_the_inline_trajectory() {
+    use std::sync::Arc;
+
+    use crate::{LayoutView, Physics, TICK_DT};
+
+    const TICKS: u32 = 30;
+    let descriptor = inputs().describe(
+        PhysicsLaw::Charge,
+        None,
+        &[PhysicsOverlay::Skeleton],
+        LawSources::bare(),
+    );
+    let positions: Vec<(NodeKey, Point2D<f32>)> = (0..12)
+        .map(|i| {
+            (
+                key(i),
+                Point2D::new(i as f32 * 9.0, ((i * i) % 7) as f32 * 11.0),
+            )
+        })
+        .collect();
+    let finish = |offload: bool| {
+        let mut sim = Simulation::new();
+        sim.sync_nodes(positions.iter().copied());
+        sim.sync_edges(inputs().edges().iter().copied());
+        let mut physics = Physics::inline(sim, 0);
+        assert!(physics.runs_inline());
+        physics.set_force_set(descriptor.clone());
+        if offload {
+            physics.offload(Arc::new(|| {}));
+            assert!(!physics.runs_inline());
+        }
+        physics.settle(TICKS);
+        let mut view = LayoutView::default();
+        let want = f64::from(TICKS) * f64::from(TICK_DT) - 1e-9;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while physics.field_clock().elapsed < want {
+            assert!(std::time::Instant::now() < deadline, "the backend did not finish");
+            physics.advance_frame(&mut view);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let mut out: Vec<_> = view
+            .positions()
+            .map(|(k, p)| (k.index(), p.x.to_bits(), p.y.to_bits()))
+            .collect();
+        out.sort();
+        out
+    };
+    let inline = finish(false);
+    assert_eq!(inline.len(), 12);
+    assert_eq!(finish(true), inline);
+}
