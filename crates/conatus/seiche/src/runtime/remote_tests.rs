@@ -409,6 +409,30 @@ fn a_cached_build_makes_the_same_forces_as_an_uncached_one() {
 }
 
 #[test]
+fn a_remote_backend_reports_the_ticks_it_folded_as_the_elapsed_steps() {
+    let hub = Loopback::new(false);
+    let mut physics = Physics::remote(Box::new(hub.clone()));
+    physics.sync_nodes(positions());
+    physics.sync_edges(edges());
+    physics.set_force_set(descriptor(PhysicsLaw::Springs, &[], Some(4)));
+    physics.settle(TICKS);
+    let mut view = LayoutView::default();
+    let config = ElapsedStepConfig::default();
+    let mut folded = 0u64;
+    for _ in 0..10_000 {
+        hub.pump();
+        let report = physics.advance_elapsed(&mut view, Duration::from_millis(16), config);
+        folded += u64::from(report.steps);
+        assert_eq!(report.discarded_elapsed, Duration::ZERO);
+        if !report.settling {
+            break;
+        }
+    }
+    assert_eq!(folded, u64::from(TICKS), "every tick the worker ran was reported once");
+    assert_eq!(physics.pace().ticks, u64::from(TICKS));
+}
+
+#[test]
 fn a_contact_cutoff_descriptor_builds_one_exclusion_and_travels() {
     let d = seiche_model::ForceSetDescriptor {
         contact_cutoff: Some(2.0 * crate::NODE_BODY_RADIUS),

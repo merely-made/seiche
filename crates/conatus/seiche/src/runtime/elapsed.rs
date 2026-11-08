@@ -91,9 +91,22 @@ impl Physics {
                 speed::fold(p, view, settling);
                 report
             },
-            Self::Actor(_) | Self::Remote(_) => ElapsedStepReport {
+            Self::Actor(_) => ElapsedStepReport {
                 settling: self.advance_frame(view),
                 ..ElapsedStepReport::default()
+            },
+            // The ticks the far side ran are the ones this call folded: the
+            // pace its updates carry, between the last fold and this one. A
+            // host that reads the step after a release (the drag receipt)
+            // reads it from here.
+            Self::Remote(p) => {
+                let before = p.pace.ticks;
+                p.fold_latest(view);
+                ElapsedStepReport {
+                    steps: u32::try_from(p.pace.ticks.saturating_sub(before)).unwrap_or(u32::MAX),
+                    settling: p.settling,
+                    ..ElapsedStepReport::default()
+                }
             },
         }
     }

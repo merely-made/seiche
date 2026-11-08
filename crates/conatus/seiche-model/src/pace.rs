@@ -204,7 +204,9 @@ impl Default for ElapsedStepConfig {
 }
 
 /// Work performed by this host call. Actor-owned simulation reports zero
-/// steps and durations: its independent actor owns time and integration.
+/// steps and durations: its independent actor owns time and integration. A
+/// remote backend reports the ticks the far side ran that the call folded (the
+/// pace between two updates) as `steps`, and nothing else.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ElapsedStepReport {
     pub steps: u32,
