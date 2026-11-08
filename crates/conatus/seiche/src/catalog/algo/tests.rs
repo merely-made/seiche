@@ -67,10 +67,7 @@ fn depths_follow_the_edges() {
     assert_eq!(focus[1], 0);
     assert_eq!(focus[2], 1);
     // A focus outside the view reads the roots' depths.
-    assert_eq!(
-        focus_depths(&k, &e, NodeKey::new(99)),
-        root_depths(&k, &e)
-    );
+    assert_eq!(focus_depths(&k, &e, NodeKey::new(99)), root_depths(&k, &e));
 }
 
 #[test]
@@ -79,7 +76,11 @@ fn the_spanning_tree_and_hop_distances_follow_the_undirected_view() {
     assert_eq!(spanning_edges(&k, &e).len(), 3);
     let hops = hop_distances(&k, &e);
     // The doubled pair is half a hop apart.
-    let d23 = hops.iter().find(|(a, b, _)| (*a, *b) == (k[2], k[3])).unwrap().2;
+    let d23 = hops
+        .iter()
+        .find(|(a, b, _)| (*a, *b) == (k[2], k[3]))
+        .unwrap()
+        .2;
     assert!((d23 - 0.5).abs() < 1e-6);
     // The isolated node reaches nothing.
     assert!(hops.iter().all(|(a, b, _)| *a != k[4] && *b != k[4]));

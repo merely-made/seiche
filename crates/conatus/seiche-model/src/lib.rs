@@ -35,6 +35,7 @@ pub const NODE_BODY_DENSITY: f32 = 0.001;
 
 pub mod catalog;
 pub mod command;
+pub mod composition;
 pub mod edge_topology;
 pub mod field_clock;
 pub mod fluid;
@@ -51,6 +52,9 @@ pub use catalog::{
     PhysicsKindSource, PhysicsLaw, PhysicsMassSource, PhysicsOverlay,
 };
 pub use command::{AffinitySpec, AnchorSpec, DataCommand};
+pub use composition::{
+    CHARGE_BETWEEN_WEIGHT, CompositionRefusal, GroupSource, PhysicsComposition, PhysicsGrouping,
+};
 pub use edge_topology::{EdgeIter, EdgeRun, EdgeTopology};
 pub use field_clock::FieldClock;
 pub use fluid::{Basin, ContactShape, Fluid, FluidContact, FluidParams};

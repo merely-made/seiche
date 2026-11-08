@@ -36,8 +36,7 @@ pub const NOT_RESIDENT: &str = "this law integrates on the GPU and takes only fo
 pub const RESIDENT_WRITE: &str = "this law integrates on the GPU and takes no term that writes \
                                   the bodies' state on the CPU";
 /// Why a weighted mix refuses a law that does not add force.
-pub const UNWEIGHTED: &str = "a weight scales a law's forces, and this law writes the bodies' \
-                              state instead, so a mix takes force laws only";
+pub use seiche_model::composition::UNWEIGHTED;
 
 /// How a law's motion enters the step: kinematic if a term writes state
 /// every tick, resident if a term integrates on the GPU, force otherwise.
