@@ -13,7 +13,7 @@ categories = ["game-engines", "rendering"]
 [dependencies]
 # The reshaped kiss3d (wing rulings 471, 606, 735): branch `mark-ik/tenant`
 # over upstream v0.47.0. Never named by games; this crate hides its types.
-kiss3d = { git = "https://github.com/mark-ik/kiss3d.git", rev = "c362cd5855c01a525d1091589a0e38135007692f" }
+kiss3d = { git = "https://github.com/mark-ik/kiss3d.git", branch = "mark-ik/tenant" }
 wgpu = { workspace = true }
 
 [dev-dependencies]
