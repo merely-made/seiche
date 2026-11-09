@@ -9,15 +9,16 @@
 //! A numen is a pervading influence, the presence felt in a place. This crate is
 //! that influence as data: the portable definitions of the **fields** an app lays
 //! over its graph, and the **couplings** that say how elements respond to them.
-//! numen owns field definitions, the analytic evaluator, registries and projection
-//! composition, plus opt-in Rhai authoring and Burn lowering. Seiche owns force
-//! laws and integrates them over Rapier bodies.
+//! numen owns the analytic evaluator, registries and projection composition, plus
+//! opt-in Rhai authoring and Burn lowering. Seiche owns force laws and integrates
+//! them over Rapier bodies.
 //!
-//! Fields are the third graph primitive, beside nodes and edges. Where the node and
-//! edge primitives live in the content substrate ([`chartulary`](https://github.com/mark-ik/chartulary)),
-//! the field primitives live here, at the same portable tier, because a field is
-//! *spatial* (it reads positions). The types are numen's; the truth is the
-//! graph realm's, persisted beside nodes and edges as content.
+//! Fields are the third graph primitive, beside nodes and edges. Since engine-split
+//! D49 their **definitions** (`field`, `coupling`, `field_ast`, `edge_path`) live in
+//! [`chartulary`](https://github.com/merely-made/eidetic), beside the generic nodes
+//! and relations; this crate re-exports them for one release so existing paths keep
+//! working, and evaluates them. The truth is the graph realm's, persisted beside
+//! nodes and edges as content.
 //!
 //! - [`ScalarField`] / [`VectorField`] — the field algebra, `f: R^2 -> R` and
 //!   `f: R^2 -> R^2`, as recursive data with `Sample` references to other fields by
@@ -35,11 +36,7 @@
 //! The default path is plain, serde-serializable data plus analytic evaluation with
 //! no GPU or host dependencies. Rhai and Burn stay behind named opt-in features.
 
-pub mod coupling;
-pub mod edge_path;
 pub mod eval;
-pub mod field;
-pub mod field_ast;
 #[cfg(feature = "field-burn")]
 pub mod lower_burn;
 pub mod projection;
@@ -48,12 +45,15 @@ pub mod responsive_path;
 #[cfg(feature = "field-rhai")]
 pub mod rhai_bindings;
 
-pub use coupling::{COUPLING_VOCAB, Coupling, CouplingResponse, NodeSelector};
-pub use edge_path::{EdgePath, EdgePathRule};
+// The definition half moved to chartulary (engine-split D49); the modules and
+// root names stay here for one release so outside users do not break.
+pub use chartulary::{coupling, edge_path, field, field_ast};
+pub use chartulary::coupling::{COUPLING_VOCAB, Coupling, CouplingResponse, NodeSelector};
+pub use chartulary::edge_path::{EdgePath, EdgePathRule};
 pub use eval::{eval_scalar, eval_vector, grad_scalar};
-pub use field::{CouplingId, Field, FieldDefinition, FieldExtent, FieldId, FieldLifecycle};
-pub use field_ast as ast;
-pub use field_ast::{Falloff, ScalarField, VectorField};
+pub use chartulary::field::{CouplingId, Field, FieldDefinition, FieldExtent, FieldId, FieldLifecycle};
+pub use chartulary::field_ast as ast;
+pub use chartulary::field_ast::{Falloff, ScalarField, VectorField};
 pub use projection::{FieldProjection, FieldProjectionBuilder};
 pub use registry::{FieldDef, FieldRegistry};
 pub use responsive_path::{

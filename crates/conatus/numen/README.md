@@ -53,9 +53,9 @@ semantic, and trigger families; the force integrator skips it.
 
 ## Dependencies
 
-serde (derive), uuid (serde; the `v4` feature only on non-wasm targets), strum
-(`EnumIter` over `CouplingResponse`). Derives are serde only; rkyv archiving is
-handled at the consuming DTO layer.
+serde (derive), uuid, and chartulary (the field, coupling, field-AST and edge-path
+definitions, moved there in engine-split D49 and re-exported here for one release).
+Derives are serde only; rkyv archiving is handled at the consuming DTO layer.
 
 Everything compiles to `wasm32-unknown-unknown`. `FieldId::new` and
 `CouplingId::new` are gated to non-wasm targets, so wasm hosts mint ids with

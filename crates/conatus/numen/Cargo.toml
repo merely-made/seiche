@@ -13,8 +13,8 @@ categories = ["data-structures", "science"]
 serde = { version = "1", features = ["derive"] }
 # Field / coupling identities are federatable UUIDs.
 uuid = { version = "1", features = ["serde"] }
-# EnumIter over the recognized force-core coupling responses (IRI round-trips).
-strum = { version = "0.28", features = ["derive"] }
+# Field, coupling and edge-path definitions (moved from this crate, D49).
+chartulary = { git = "https://github.com/merely-made/eidetic.git", branch = "main" }
 # Optional authoring and tensor-lowering backends. The default path remains
 # serde/UUID data plus the analytic evaluator; neither Burn nor Rhai reaches a
 # portable consumer unless it selects the corresponding feature.
