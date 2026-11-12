@@ -2,3 +2,6 @@
 target/
 **/.cargo/local/
 **/.cargo/config.local.toml
+
+# No Cargo.lock is tracked; see scripts/record-resolved.sh.
+Cargo.lock
