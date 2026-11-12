@@ -19,7 +19,7 @@ use burn::tensor::Device;
 use burn::tensor::Tensor;
 
 fn cpu_device() -> Device {
-    Device::ndarray()
+    Device::flex()
 }
 fn gpu_device() -> Device {
     Device::wgpu(burn::tensor::DeviceKind::DiscreteGpu(0))

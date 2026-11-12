@@ -290,7 +290,7 @@ mod tests {
     // backend chosen per call site via Device
 
     fn run(xs: &[f32], ys: &[f32], p: RepulsionParams) -> (Vec<f32>, Vec<f32>) {
-        let dev = burn::tensor::Device::ndarray();
+        let dev = burn::tensor::Device::flex();
         let (fx, fy) = repulsion(
             Tensor::<1>::from_floats(xs, &dev),
             Tensor::<1>::from_floats(ys, &dev),
@@ -303,7 +303,7 @@ mod tests {
     }
 
     fn run_node_exclusion(xs: &[f32], ys: &[f32], p: NodeExclusionParams) -> (Vec<f32>, Vec<f32>) {
-        let dev = burn::tensor::Device::ndarray();
+        let dev = burn::tensor::Device::flex();
         let (fx, fy) = node_exclusion(
             Tensor::<1>::from_floats(xs, &dev),
             Tensor::<1>::from_floats(ys, &dev),
@@ -459,7 +459,7 @@ mod tests_wgpu {
     #[test]
     fn parity_ndarray_wgpu() {
         let (xs, ys) = positions(257);
-        let (cx, cy) = run(&xs, &ys, &burn::tensor::Device::ndarray());
+        let (cx, cy) = run(&xs, &ys, &burn::tensor::Device::flex());
         let (gx, gy) = run(
             &xs,
             &ys,
@@ -484,7 +484,7 @@ mod tests_wgpu {
             cutoff: 100.0,
             min_distance: 8.0,
         };
-        let (cx, cy) = run_node_exclusion(&xs, &ys, params, &burn::tensor::Device::ndarray());
+        let (cx, cy) = run_node_exclusion(&xs, &ys, params, &burn::tensor::Device::flex());
         let (gx, gy) = run_node_exclusion(
             &xs,
             &ys,
@@ -521,7 +521,7 @@ mod tests_wgpu {
             let _warm = run(&xs, &ys, &gpu_dev);
 
             let t = std::time::Instant::now();
-            let _ = run(&xs, &ys, &burn::tensor::Device::ndarray());
+            let _ = run(&xs, &ys, &burn::tensor::Device::flex());
             let cpu_us = t.elapsed().as_micros();
 
             let t = std::time::Instant::now();
