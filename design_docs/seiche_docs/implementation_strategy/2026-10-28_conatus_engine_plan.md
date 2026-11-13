@@ -117,5 +117,5 @@ Nexus is reconsidered as a backend seat when a product's tactile body count outg
 
 ## Progress
 
-- 2026-11-12: the backend constraint and NX's done-condition amended to Isocosm `sim-host` D8 (`isocosm/mesocosm/design_docs/2026-10-28_sim_host_plan.md`): a backend proposes, the sim admits and records, and 604 binds the CPU fallback only. Nothing built. Mere's dynamics grammar plan (G8) still states the cross-OS digest as a condition in conatus and is not yet amended.
+- 2026-11-12: the backend constraint and NX's done-condition amended to Isocosm `sim-host` D8 (`isocosm/mesocosm/design_docs/2026-10-28_sim_host_plan.md`): a backend proposes, the sim admits and records, and 604 binds the CPU fallback only. Nothing built. The dynamics grammar plan (G8), now in graphshell (`design_docs/graphshell_docs/implementation_strategy/2026-10-28_dynamics_grammar_plan.md`), is amended to match (graphshell e13bb95e).
 - 2026-10-28: cut from `2026-08-22_conatus_engine_plan.md`; nothing new landed.
