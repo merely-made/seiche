@@ -47,13 +47,13 @@ pub mod rhai_bindings;
 
 // The definition half moved to chartulary (engine-split D49); the modules and
 // root names stay here for one release so outside users do not break.
-pub use chartulary::{coupling, edge_path, field, field_ast};
-pub use chartulary::coupling::{COUPLING_VOCAB, Coupling, CouplingResponse, NodeSelector};
-pub use chartulary::edge_path::{EdgePath, EdgePathRule};
+pub use fieldbook::{coupling, edge_path, field, field_ast};
+pub use fieldbook::coupling::{COUPLING_VOCAB, Coupling, CouplingResponse, NodeSelector};
+pub use fieldbook::edge_path::{EdgePath, EdgePathRule};
 pub use eval::{eval_scalar, eval_vector, grad_scalar};
-pub use chartulary::field::{CouplingId, Field, FieldDefinition, FieldExtent, FieldId, FieldLifecycle};
-pub use chartulary::field_ast as ast;
-pub use chartulary::field_ast::{Falloff, ScalarField, VectorField};
+pub use fieldbook::field::{CouplingId, Field, FieldDefinition, FieldExtent, FieldId, FieldLifecycle};
+pub use fieldbook::field_ast as ast;
+pub use fieldbook::field_ast::{Falloff, ScalarField, VectorField};
 pub use projection::{FieldProjection, FieldProjectionBuilder};
 pub use registry::{FieldDef, FieldRegistry};
 pub use responsive_path::{
