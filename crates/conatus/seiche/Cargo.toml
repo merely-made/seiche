@@ -74,7 +74,7 @@ armillary = { version = "0.1.1", optional = true, git = "https://github.com/mere
 # The lagged evaluator on the host's device (feature `gpu`): conatus's
 # resident lane, and the wgpu handle types a host passes in.
 conatus = { path = "../conatus", version = "0.1.0", default-features = false, features = ["resident"], optional = true }
-wgpu = { version = "30", default-features = false, optional = true }
+wgpu = { version = "30.0.2", default-features = false, optional = true }
 burn = { version = "=0.23.0-pre.2", default-features = false, features = ["std"], optional = true }
 burn-wgpu = { version = "=0.23.0-pre.2", default-features = false, features = ["std", "autotune"], optional = true }
 
@@ -121,7 +121,7 @@ serde_json = "1"
 toml = "0.8"
 # The `gpu` receipts boot an adapter of their own.
 pollster = "0.4"
-wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
+wgpu = { version = "30.0.2", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen = "=0.2.129"

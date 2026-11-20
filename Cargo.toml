@@ -36,7 +36,7 @@ too_many_lines = "warn"
 # The rows the members inherit with `workspace = true`.
 [workspace.dependencies]
 nisus = { version = "0.1.0", path = "crates/conatus/nisus" }
-wgpu = "30.0.1"
+wgpu = "30.0.2"
 
 # Physics in dev builds (Mere's physics catalog plan, ruled 2026-10-04, "Opt 3
 # in dev for physics"): one Density start took 146.5 s at the dev profile's
