@@ -43,7 +43,7 @@ use cubecl::server::Handle;
 
 use super::exclusion::ExclusionParams;
 use super::{
-    ChunkStamp, PlaneElementType, ReadEpoch, ResidentClient, SpatialLease, binning, kernels as law,
+    ChunkStamp, PlaneElementType, ReadEpoch, ResidentClient, SpatialLease, kernels as law,
 };
 
 mod kernels;
