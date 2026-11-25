@@ -41,9 +41,14 @@ use cubecl::server::Handle;
 pub mod binning;
 mod chunk;
 mod exclusion;
+mod graph;
 pub mod kernels;
 
 pub use chunk::*;
+pub use graph::{
+    GraphError, GraphLease, GraphParams, GraphStats, Pending, ResidentGraph, SLOT_ALIVE, SLOT_PINNED,
+    SlotId,
+};
 pub use exclusion::{
     DEFAULT_CELL_THRESHOLD, Exclusion, ExclusionError, ExclusionParams, PendingExclusion,
 };

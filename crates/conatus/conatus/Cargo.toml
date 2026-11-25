@@ -55,6 +55,10 @@ name = "resident"
 required-features = ["resident"]
 
 [[test]]
+name = "graph"
+required-features = ["resident"]
+
+[[test]]
 name = "exclusion"
 required-features = ["resident"]
 
