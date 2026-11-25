@@ -110,8 +110,16 @@ impl ResidentGraph {
         self.put(Buf::Offsets, 0, bytemuck::cast_slice(&offsets));
         // An empty set still needs a bound allocation; one zeroed edge is
         // never read because every row is empty.
-        let ids: &[u32] = if self.springs.edges == 0 { &[0; 3] } else { &self.springs.ids };
-        let weights: &[f32] = if self.springs.edges == 0 { &[0.0] } else { &self.springs.weights };
+        let ids: &[u32] = if self.springs.edges == 0 {
+            &[0; 3]
+        } else {
+            &self.springs.ids
+        };
+        let weights: &[f32] = if self.springs.edges == 0 {
+            &[0.0]
+        } else {
+            &self.springs.weights
+        };
         self.bufs.edge_ids = self.client.create_from_slice(bytemuck::cast_slice(ids));
         self.bufs.edge_weights = self.client.create_from_slice(bytemuck::cast_slice(weights));
         self.stats.uploaded_bytes += (ids.len() * 4 + weights.len() * 4) as u64;

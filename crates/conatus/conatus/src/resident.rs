@@ -45,12 +45,12 @@ mod graph;
 pub mod kernels;
 
 pub use chunk::*;
-pub use graph::{
-    GraphError, GraphLease, GraphParams, GraphStats, Pending, ResidentGraph, SLOT_ALIVE, SLOT_PINNED,
-    SlotId,
-};
 pub use exclusion::{
     DEFAULT_CELL_THRESHOLD, Exclusion, ExclusionError, ExclusionParams, PendingExclusion,
+};
+pub use graph::{
+    GraphError, GraphLease, GraphParams, GraphStats, Pending, ResidentGraph, SLOT_ALIVE,
+    SLOT_PINNED, SlotId,
 };
 
 /// One step's constants. [`Resident::new`] owns the matching CubeCL argument
@@ -160,7 +160,9 @@ impl Resident {
 
         let resolve = |handle: &Handle| {
             let managed = compute
-                .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(handle.clone())
+                .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(
+                    handle.clone(),
+                )
                 .expect("resident allocation");
             let resource = managed.resource();
             (resource.buffer.clone(), resource.offset, resource.size)

@@ -128,8 +128,10 @@ impl ResidentGraph {
             handle,
             4,
             Box::new(|bytes| {
-                let word: [u8; 4] = sized(bytes, 4)?[..4].try_into().expect("four bytes");
-                Ok(f32::from_bits(u32::from_le_bytes(word)))
+                let word = sized(bytes, 4)?;
+                Ok(f32::from_bits(u32::from_le_bytes([
+                    word[0], word[1], word[2], word[3],
+                ])))
             }),
         )
     }
@@ -219,7 +221,9 @@ impl ResidentGraph {
         let indices: Vec<u32> = slots.iter().map(|slot| slot.index).collect();
         let out = self.client.empty(count.max(1) * 16);
         if count > 0 {
-            let uploaded = self.client.create_from_slice(bytemuck::cast_slice(&indices));
+            let uploaded = self
+                .client
+                .create_from_slice(bytemuck::cast_slice(&indices));
             self.stats.uploaded_bytes += count as u64 * 4;
             unsafe {
                 kernels::gather_positions::launch_unchecked(
@@ -236,9 +240,7 @@ impl ResidentGraph {
         Ok(self.read(
             out,
             count * 16,
-            Box::new(move |bytes| {
-                Ok(bytemuck::cast_slice(sized(bytes, count * 16)?).to_vec())
-            }),
+            Box::new(move |bytes| Ok(bytemuck::cast_slice(sized(bytes, count * 16)?).to_vec())),
         ))
     }
 

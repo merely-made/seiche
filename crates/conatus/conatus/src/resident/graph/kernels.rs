@@ -23,6 +23,8 @@ use crate::resident::kernels::STRIDE;
 /// The cell coordinate of one axis, clamped to ±1e9 so the cast to `i32` is
 /// defined for any finite position. Bodies that far out share a cell and are
 /// tested by distance like any others, so the clamp costs no pair.
+// The cube dialect has no `clamp` or `&&` in kernels; the bounds are written out.
+#[allow(clippy::manual_clamp)]
 #[cube]
 pub fn cell_coord(value: f32, inv_cell: f32) -> i32 {
     let mut cell = f32::floor(value * inv_cell);
@@ -37,6 +39,7 @@ pub fn cell_coord(value: f32, inv_cell: f32) -> i32 {
 
 /// The bucket of a cell: two multiplicative hashes mixed, then masked to the
 /// table (a power of two, `mask = size - 1`).
+#[allow(clippy::assign_op_pattern)]
 #[cube]
 pub fn bucket(cx: i32, cy: i32, mask: u32) -> u32 {
     let hx = u32::cast_from(cx) * 73856093u32;
@@ -105,6 +108,7 @@ pub fn scatter_buckets(
 /// `seiche::NodeExclusion`'s law over the hashed grid: the nine cells around
 /// a body, each looked up by bucket and filtered to bodies actually in that
 /// cell. Cells are wider than the cutoff, so every pair inside it is found.
+#[allow(clippy::collapsible_if)]
 #[cube(launch_unchecked)]
 pub fn exclude_buckets(
     positions: &[f32],

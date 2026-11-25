@@ -224,7 +224,10 @@ fn weighted_springs_match_a_host_loop_of_the_same_law() {
         })
         .filter(|(a, b, _)| a != b)
         .collect();
-    let set: Vec<_> = pairs.iter().map(|&(a, b, w)| (slots[a], slots[b], w)).collect();
+    let set: Vec<_> = pairs
+        .iter()
+        .map(|&(a, b, w)| (slots[a], slots[b], w))
+        .collect();
     graph.set_springs(41, &set).expect("springs");
     assert_eq!(graph.spring_revision(), 41);
     graph.compute_forces();
@@ -272,12 +275,18 @@ fn a_pinned_node_holds_its_target_while_neighbours_move() {
     // Re-targeting is one write; unpinning releases it to the forces.
     graph.pin(slots[0], [-5.0, 0.0, 0.0]).expect("retarget");
     graph.step();
-    assert_eq!(graph.read_positions().expect("positions")[0][..3], [-5.0, 0.0, 0.0]);
+    assert_eq!(
+        graph.read_positions().expect("positions")[0][..3],
+        [-5.0, 0.0, 0.0]
+    );
     graph.unpin(slots[0]).expect("unpin");
     for _ in 0..5 {
         graph.step();
     }
-    assert_ne!(graph.read_positions().expect("positions")[0][..3], [-5.0, 0.0, 0.0]);
+    assert_ne!(
+        graph.read_positions().expect("positions")[0][..3],
+        [-5.0, 0.0, 0.0]
+    );
 }
 
 #[test]
@@ -303,14 +312,20 @@ fn removed_slots_are_reused_with_a_new_generation_and_stale_writes_are_refused()
     assert!((alone[0][0] - fx[0]).abs() < 1e-3 && (alone[0][1] - fy[0]).abs() < 1e-3);
     assert_eq!(graph.read_flags().expect("flags")[1], 0);
 
-    assert_eq!(graph.pin(slots[1], [1.0; 3]), Err(GraphError::StaleSlot(slots[1])));
+    assert_eq!(
+        graph.pin(slots[1], [1.0; 3]),
+        Err(GraphError::StaleSlot(slots[1]))
+    );
     assert_eq!(graph.remove(slots[1]), Err(GraphError::StaleSlot(slots[1])));
     assert!(graph.read_slots(&[slots[1]]).is_err());
 
     let again = graph.insert([30.0, 0.0, 0.0, 0.0]).expect("reinsert");
     assert_eq!(again.index, slots[1].index);
     assert_eq!(again.generation, slots[1].generation + 1);
-    assert_eq!(graph.pin(slots[1], [1.0; 3]), Err(GraphError::StaleSlot(slots[1])));
+    assert_eq!(
+        graph.pin(slots[1], [1.0; 3]),
+        Err(GraphError::StaleSlot(slots[1]))
+    );
     assert_eq!(graph.slot_at(again.index), Some(again));
     assert_eq!(graph.len(), 3);
     assert_eq!(graph.read_flags().expect("flags")[1], SLOT_ALIVE);
@@ -318,7 +333,9 @@ fn removed_slots_are_reused_with_a_new_generation_and_stale_writes_are_refused()
     assert_eq!(graph.read_forces().expect("forces")[0][0], both[0][0]);
 
     // A spring set from before the removal does not follow the new occupant.
-    graph.set_springs(1, &[(slots[0], again, 1.0)]).expect("springs");
+    graph
+        .set_springs(1, &[(slots[0], again, 1.0)])
+        .expect("springs");
     graph.remove(again).expect("remove");
     let third = graph.insert([30.0, 0.0, 0.0, 0.0]).expect("reinsert");
     assert_eq!(third.index, again.index);
@@ -367,7 +384,10 @@ fn growth_changes_the_epoch_and_keeps_live_state() {
     assert!(flags[2] & SLOT_PINNED != 0);
     graph.step();
     assert_eq!(graph.read_positions().expect("p")[2][..3], [9.0, 9.0, 0.0]);
-    assert_eq!(graph.pin(slots[3], [0.0; 3]), Err(GraphError::StaleSlot(slots[3])));
+    assert_eq!(
+        graph.pin(slots[3], [0.0; 3]),
+        Err(GraphError::StaleSlot(slots[3]))
+    );
 }
 
 #[test]
@@ -377,20 +397,40 @@ fn pick_and_read_slots_return_exactly_what_they_name() {
         .map(|i| [i as f32 * 100.0, -(i as f32) * 50.0, 0.0, 0.0])
         .collect();
     let slots = graph.insert_many(&positions).expect("insert");
-    assert_eq!(graph.pick([302.0, -148.0, 0.0], 10.0).expect("pick"), Some(slots[3]));
+    assert_eq!(
+        graph.pick([302.0, -148.0, 0.0], 10.0).expect("pick"),
+        Some(slots[3])
+    );
     assert_eq!(graph.pick([350.0, -50.0, 0.0], 10.0).expect("pick"), None);
     // Of two inside the radius, the nearer wins.
-    assert_eq!(graph.pick([440.0, -200.0, 0.0], 100.0).expect("pick"), Some(slots[4]));
+    assert_eq!(
+        graph.pick([440.0, -200.0, 0.0], 100.0).expect("pick"),
+        Some(slots[4])
+    );
     let order = [slots[7], slots[0], slots[7], slots[5]];
-    let gathered = graph.read_slots(&order).expect("gather").wait().expect("read");
+    let gathered = graph
+        .read_slots(&order)
+        .expect("gather")
+        .wait()
+        .expect("read");
     let expected: Vec<_> = order.iter().map(|s| positions[s.index as usize]).collect();
     assert_eq!(gathered, expected);
-    assert!(graph.read_slots(&[]).expect("empty").wait().expect("read").is_empty());
+    assert!(
+        graph
+            .read_slots(&[])
+            .expect("empty")
+            .wait()
+            .expect("read")
+            .is_empty()
+    );
     // A removed slot is never picked, and the next pick sees the survivor.
     graph.remove(slots[3]).expect("remove");
     assert_eq!(graph.pick([302.0, -148.0, 0.0], 10.0).expect("pick"), None);
     let reused = graph.insert([302.0, -148.0, 0.0, 0.0]).expect("insert");
-    assert_eq!(graph.pick([302.0, -148.0, 0.0], 10.0).expect("pick"), Some(reused));
+    assert_eq!(
+        graph.pick([302.0, -148.0, 0.0], 10.0).expect("pick"),
+        Some(reused)
+    );
     assert_eq!(reused.generation, slots[3].generation + 1);
     assert!(graph.max_speed().expect("settle") >= 0.0);
 }
@@ -422,7 +462,10 @@ fn step_cost_and_traffic() {
         let mut graph = ResidentGraph::new(&client, n, GraphParams::default());
         let positions = scatter(n, 140.0);
         let slots = graph.insert_many(&positions).expect("insert");
-        let pairs: Vec<_> = (1..n).step_by(2).map(|i| (slots[i - 1], slots[i], 1.0)).collect();
+        let pairs: Vec<_> = (1..n)
+            .step_by(2)
+            .map(|i| (slots[i - 1], slots[i], 1.0))
+            .collect();
         graph.set_springs(1, &pairs).expect("springs");
         for _ in 0..4 {
             graph.step();
