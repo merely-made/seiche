@@ -160,9 +160,7 @@ impl Resident {
 
         let resolve = |handle: &Handle| {
             let managed = compute
-                .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(
-                    handle.clone(),
-                )
+                .get_resource::<cubecl::wgpu::WgpuServer<cubecl::wgpu::AutoCompiler>>(handle.clone())
                 .expect("resident allocation");
             let resource = managed.resource();
             (resource.buffer.clone(), resource.offset, resource.size)
